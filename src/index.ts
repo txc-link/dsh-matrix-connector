@@ -30,6 +30,7 @@ import { buildPostMortem } from './post-mortem.js';
 import { buildStatusPanel } from './status-panel.js';
 import { renderRollup } from './rollup.js';
 import { buildStuckAlert } from './stuck-alert.js';
+import { renderStuckList } from './stuck-list.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -108,6 +109,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   // summary to the originating room. The plugin does NOT
   // auto-reassign; that would require a Core endpoint we do not have.
   const alertedStuck = new Set<string>();
+  const stuckTasksList: Array<{ taskId: string; idleMs: number; stage: string; agentId: string; roomId: string }> = [];
   const stuckAlert = buildStuckAlert({
     matrix,
     taskBridge: {
@@ -236,6 +238,17 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         await matrix.sendText(input.roomId, reply);
         return;
       }
+      case 'stuck': {
+        // v2.0.2 — list tasks the plugin has observed stuck in this
+        // session (via SSE inbox_escalated). Session-local data; a
+        // fresh restart rebuilds the list from SSE replay.
+        const reply = renderStuckList({
+          stuckTasks: stuckTasksList,
+          rooms: new Set([input.roomId]),
+        });
+        await matrix.sendText(input.roomId, reply);
+        return;
+      }
       case 'im': {
         if (decision.subVerb === 'health') {
           const h = await agora.health();
@@ -268,6 +281,27 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     // room. The plugin does NOT auto-reassign; that would require a
     // Core endpoint we don't have today.
     await stuckAlert.handleEvent(evt as AgoraEvent);
+    // v2.0.2 — also keep an in-memory list of stuck tasks so
+    // /agora stuck can render them on demand.
+    if ((evt as AgoraEvent).type === 'inbox_escalated') {
+      const detail = (evt as { detail?: { kind?: string; idle_ms?: number } }).detail;
+      const idleMs = typeof detail?.idle_ms === 'number' ? detail.idle_ms : 0;
+      try {
+        const raw = await agora.getTask(taskId) as unknown as Record<string, unknown>;
+        const team = (raw.team as { members?: Array<{ role: string; agentId: string }> }) ?? { members: [] };
+        const agent = (team.members ?? []).find((m: { role: string; agentId: string }) => m.role === 'executor')?.agentId ?? 'unknown';
+        const stage = typeof raw.current_stage === 'string' ? raw.current_stage : '-';
+        stuckTasksList.push({
+          taskId,
+          idleMs,
+          stage,
+          agentId: agent,
+          roomId: binding.roomId,
+        });
+      } catch {
+        /* task record unavailable — skip list update */
+      }
+    }
     // v0.3.1 — also try to post the war-room post-mortem summary if
     // the task has a subtask with output (see post-mortem.ts).
     await postMortem.handleTick(evt);

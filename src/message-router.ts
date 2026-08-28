@@ -13,6 +13,7 @@ export type VerbName =
   | 'brain'
   | 'im'
   | 'rollup'
+  | 'stuck'
   | 'help'
   | 'unknown';
 
@@ -99,6 +100,11 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
       // this plugin instance has seen plus all tasks it knows about.
       // No sub-verb. No required args.
       return { verb: 'rollup', args: tail };
+    }
+    case 'stuck': {
+      // v2.0.2 — `/agora stuck` lists tasks the plugin has seen
+      // escalated via SSE inbox_escalated events in this session.
+      return { verb: 'stuck', args: tail };
     }
     case 'help': {
       return { verb: 'help', args: [] };
