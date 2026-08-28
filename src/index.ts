@@ -26,6 +26,7 @@ import {
 import { MatrixClient } from './matrix-client.js';
 import { HELP_TEXT, renderError, route } from './message-router.js';
 import { ThreadRegistry, buildThreadKey } from './thread-registry.js';
+import { buildPostMortem } from './post-mortem.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -59,6 +60,34 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const taskBridge = new TaskBridge(agora);
   const artifactBridge = new ArtifactBridge(agora);
   const attentionBridge = new AttentionBridge(agora);
+
+  // v0.3.1 — war-room post-mortem: for each SSE tick on a known task,
+  // pulls the task record and posts a one-shot summary back to the room
+  // once a subtask completes or produces output.
+  const postedPostMortem = new Set<string>();
+  const postMortem = buildPostMortem({
+    matrix,
+    taskBridge: {
+      show: async (taskId) => {
+        // TaskBridge.show() formats markdown for IM rendering; the
+        // post-mortem needs the raw TaskRecord. We bypass TaskBridge
+        // and call agora.getTask() directly, then add an empty
+        // subtasks[] if the server didn't include them (the smoke
+        // response shape omits subtasks).
+        const raw = await agora.getTask(taskId) as unknown as Record<string, unknown>;
+        const team = (raw.team as { members: Array<{ role: string; agentId: string }> }) ?? { members: [] };
+        return {
+          id: String(raw.id ?? taskId),
+          state: String(raw.state ?? 'unknown'),
+          team,
+          subtasks: Array.isArray(raw.subtasks) ? raw.subtasks as Array<{ status: string; output?: string | null; done_at?: string | null }> : [],
+          artifacts: Array.isArray(raw.artifacts) ? raw.artifacts as Array<{ artifact_id?: string; name?: string }> : [],
+        };
+      },
+    },
+    roomForTask: (taskId) => registry.resolveTaskId(taskId)?.roomId,
+    posted: postedPostMortem,
+  });
 
   async function handleRoomMessage(input: {
     roomId: string;
@@ -142,6 +171,9 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     const status = typeof evt.state === 'string' ? evt.state : 'running';
     const label = `🤖 ${status} (task_id=${taskId})`;
     await matrix.edit(binding.roomId, binding.placeholderEventId, label);
+    // v0.3.1 — also try to post the war-room post-mortem summary if
+    // the task has a subtask with output (see post-mortem.ts).
+    await postMortem.handleTick(evt);
   }
 
   return {
