@@ -1,0 +1,14 @@
+# Install with: dsh plugin --profile <profile> add <path-or-git-url>
+# Production deployments must override homeserverUrl, userId, accessToken,
+# deviceId, agoraServerUrl, and agoraApiToken in the profile's cordis.patch.yml.
+- insert:
+    - id: matrix-connector
+      name: 'dsh-matrix-connector'
+      config:
+        requestTimeoutMs: 10000
+        commandName: 'agora'
+        nodeEnabled: true
+        shareSessionInChannel: false
+        allowFrom: '*'
+        autoJoin: true
+        eventPollIntervalMs: 5000

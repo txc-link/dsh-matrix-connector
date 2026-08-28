@@ -1,0 +1,132 @@
+/**
+ * bridges unit tests.
+ *
+ * Mock agora-rest client + verify human-readable output the message router
+ * will send back to the matrix room.
+ *
+ * v0.1 reality (2026-08-28 probe): CitizenBridge endpoints are not deployed
+ * so the assertions here cover the endpoint-not-deployed message rather
+ * than the rich citizen rendering.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  ArtifactBridge,
+  AttentionBridge,
+  CitizenBridge,
+  DispatchBridge,
+  TaskBridge,
+} from '../lib/bridges.js';
+import { EndpointNotDeployedError } from '../lib/agora-rest.js';
+
+function makeAgora(overrides = {}) {
+  return {
+    health: async () => ({ status: 'ok' }),
+    listTemplates: async () => overrides.templates ?? [
+      { id: 'quick', name: 'Quick', type: 'quick', description: 'one-shot', governance: 'lean', stage_count: 1 },
+    ],
+    listTasks: async () => [],
+    getTask: async (id) => overrides.task ?? { id, state: 'running', type: 'quick', creator: '@u:hs', current_stage: 'execute' },
+    createTask: async (input) => overrides.taskReceipt ?? { id: 'task_42', state: 'pending', type: input.type, title: input.title, creator: input.creator },
+    listProjects: async () => ({ projects: [] }),
+    getProject: async () => ({}),
+    searchBrain: async (_pid, query) => overrides.brainHits ?? [
+      { reference_key: 'doc:design', kind: 'doc', slug: 'design', score: 0.93, excerpt: query },
+    ],
+    listArtifacts: async () => [],
+    getArtifact: async () => ({}),
+    getArtifactContent: async (id) => ({ artifact_id: id, bytes: new Uint8Array([1, 2, 3]), media_type: 'text/plain', name: 'a.txt' }),
+    listCitizens: async () => { throw new EndpointNotDeployedError('GET /api/citizens'); },
+    getCitizen: async () => { throw new EndpointNotDeployedError('GET /api/citizens/:id'); },
+    pollEvents: async () => { throw new EndpointNotDeployedError('GET /api/events'); },
+    ...overrides.agora,
+  };
+}
+
+test('CitizenBridge.list: surfaces the endpoint-not-deployed gap', async () => {
+  const bridge = new CitizenBridge(makeAgora());
+  const out = await bridge.list('node-a');
+  assert.match(out, /not available yet/);
+  assert.match(out, /citizen list/);
+});
+
+test('CitizenBridge.show: surfaces the endpoint-not-deployed gap', async () => {
+  const bridge = new CitizenBridge(makeAgora());
+  const out = await bridge.show('cit-a');
+  assert.match(out, /not available yet/);
+  assert.match(out, /citizen show/);
+});
+
+test('DispatchBridge.dispatch: posts v0.6.0 schema (no threadKey/actor/target on the wire)', async () => {
+  const captured = { input: null };
+  const agora = makeAgora({
+    agora: {
+      createTask: async (input) => {
+        captured.input = input;
+        return { id: 'task_42', state: 'pending', type: input.type, title: input.title, creator: input.creator };
+      },
+    },
+  });
+  const bridge = new DispatchBridge(agora, { projectId: 'node-a', defaultCreator: '@b:hs', defaultTemplate: 'quick' });
+  const r = await bridge.dispatch(['ask', 'REMOTE_OK']);
+  assert.equal(r.receipt.task_id, 'task_42');
+  assert.match(r.placeholder, /task_42/);
+  // wire shape must match the v0.6.0 schema; threadKey never crosses.
+  assert.equal(captured.input.title, 'ask REMOTE_OK');
+  assert.equal(captured.input.type, 'quick');
+  assert.equal(captured.input.creator, '@b:hs');
+  assert.equal(captured.input.priority, 'normal');
+  assert.equal(captured.input.threadKey, undefined);
+  assert.equal(captured.input.actor, undefined);
+  assert.equal(captured.input.target, undefined);
+});
+
+test('DispatchBridge.dispatch: empty args throws', async () => {
+  const bridge = new DispatchBridge(makeAgora(), { projectId: 'node-a', defaultCreator: '@b:hs' });
+  await assert.rejects(bridge.dispatch([]));
+});
+
+test('TaskBridge.show: shows id + state + creator + type', async () => {
+  const bridge = new TaskBridge(makeAgora());
+  const out = await bridge.show('task_42');
+  assert.match(out, /task_42/);
+  assert.match(out, /status=running/);
+  assert.match(out, /stage=execute/);
+  assert.match(out, /creator: @u:hs/);
+  assert.match(out, /type: quick/);
+});
+
+test('ArtifactBridge.fetchBytes: returns bytes + media + name', async () => {
+  const bridge = new ArtifactBridge(makeAgora());
+  const r = await bridge.fetchBytes('sha256-x');
+  assert.equal(r.mediaType, 'text/plain');
+  assert.equal(r.name, 'a.txt');
+  assert.equal(r.bytes.length, 3);
+});
+
+test('AttentionBridge.search: empty query returns usage error string', async () => {
+  const bridge = new AttentionBridge(makeAgora());
+  const out = await bridge.search('node-a', '   ');
+  assert.match(out, /non-empty query/);
+});
+
+test('AttentionBridge.search: formats top-N hits with score + excerpt', async () => {
+  const bridge = new AttentionBridge(makeAgora({
+    brainHits: [
+      { reference_key: 'a', kind: 'doc', slug: 'a', score: 0.91, excerpt: 'first' },
+      { reference_key: 'b', kind: 'doc', slug: 'b', score: 0.80, excerpt: 'second' },
+    ],
+  }));
+  const out = await bridge.search('node-a', 'foo');
+  assert.match(out, /brain search top 2/);
+  assert.match(out, /0\.91/);
+  assert.match(out, /first/);
+});
+
+test('AttentionBridge.search: empty hits returns friendly message', async () => {
+  const bridge = new AttentionBridge(makeAgora({ brainHits: [] }));
+  const out = await bridge.search('node-a', 'foo');
+  assert.match(out, /no matches/);
+});

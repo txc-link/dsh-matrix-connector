@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+/**
+ * smoke-matrix.mjs — end-to-end smoke test against a real Synapse homeserver.
+ *
+ * Usage:
+ *   MATRIX_HOMESERVER_URL=https://hs \
+ *   MATRIX_USER_ID=@b:hs \
+ *   MATRIX_ACCESS_TOKEN=... \
+ *   MATRIX_DEVICE_ID=... \
+ *   AGORA_SERVER_URL=http://127.0.0.1:18008 \
+ *   AGORA_API_TOKEN=... \
+ *   node tests/smoke-matrix.mjs
+ *
+ * What it does:
+ *   1. login via matrix-js-sdk using MATRIX_ACCESS_TOKEN
+ *   2. create (or reuse) a smoke room
+ *   3. invite bot into the room (idempotent)
+ *   4. send a synthetic /agora dispatch message
+ *   5. poll agora central /api/events and edit the placeholder
+ *   6. assert room contains the edited placeholder
+ *
+ * Exits non-zero on any failure.
+ */
+
+import assert from 'node:assert/strict';
+
+const HOMESERVER = required('MATRIX_HOMESERVER_URL');
+const USER_ID = required('MATRIX_USER_ID');
+const ACCESS_TOKEN = required('MATRIX_ACCESS_TOKEN');
+const DEVICE_ID = required('MATRIX_DEVICE_ID');
+const AGORA = required('AGORA_SERVER_URL');
+const AGORA_TOKEN = required('AGORA_API_TOKEN');
+
+const ROOM_NAME = `dsh-matrix-connector-smoke-${Date.now()}`;
+const POLL_INTERVAL_MS = 2000;
+
+async function http(method, url, body, headers = {}) {
+  const init = { method, headers: { ...headers } };
+  if (body !== undefined) {
+    init.headers['content-type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, init);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`${method} ${url} failed: ${response.status} ${text}`);
+  }
+  return text ? JSON.parse(text) : undefined;
+}
+
+async function matrix(path, body) {
+  return http('POST', `${HOMESERVER}${path}`, body, {
+    Authorization: `Bearer ${ACCESS_TOKEN}`,
+  });
+}
+
+function agoraHeaders() {
+  return { Authorization: `Bearer ${AGORA_TOKEN}` };
+}
+
+async function agoraHealth() {
+  return http('GET', `${AGORA}/api/health`, undefined, agoraHeaders());
+}
+
+async function agoraCreateTask(input) {
+  return http('POST', `${AGORA}/api/tasks`, input, agoraHeaders());
+}
+
+async function agoraListCitizens(projectId) {
+  return http('GET', `${AGORA}/api/citizens?project_id=${encodeURIComponent(projectId)}`, undefined, agoraHeaders());
+}
+
+async function agoraPollEvents(since) {
+  return http('GET', `${AGORA}/api/events?since=${encodeURIComponent(String(since))}`, undefined, agoraHeaders());
+}
+
+function required(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Skipped(`missing env ${name}`);
+  }
+  return value;
+}
+
+class Skipped extends Error {}
+
+const HOMESERVER = required('MATRIX_HOMESERVER_URL');
+const USER_ID = required('MATRIX_USER_ID');
+const ACCESS_TOKEN = required('MATRIX_ACCESS_TOKEN');
+const DEVICE_ID = required('MATRIX_DEVICE_ID');
+const AGORA = required('AGORA_SERVER_URL');
+  return value;
+}
+
+async function main() {
+  console.log('== smoke-matrix v0.1 ==');
+  console.log('homeserver:', HOMESERVER);
+  console.log('user_id   :', USER_ID);
+  console.log('agora     :', AGORA);
+
+  // 1. agora health
+  const h = await agoraHealth();
+  console.log('agora health:', h.status);
+  assert.equal(h.status, 'ok');
+
+  // 2. citizens list
+  const citizensResp = await agoraListCitizens('node-a');
+  console.log(`citizens available: ${citizensResp.citizens?.length ?? 0}`);
+
+  // 3. create smoke room
+  const room = await matrix('/_matrix/client/v3/createRoom', {
+    name: ROOM_NAME,
+    topic: 'dsh-matrix-connector smoke',
+    preset: 'private_chat',
+    invite: [USER_ID],
+  });
+  console.log('room_id:', room.room_id);
+
+  // 4. send /agora dispatch
+  const promptText = `smoke ${new Date().toISOString()}`;
+  const send = await matrix(`/_matrix/client/v3/rooms/${room.room_id}/send/m.room.message`, {
+    msgtype: 'm.text',
+    body: `/agora dispatch ask ${promptText}`,
+  });
+  console.log('placeholder event:', send.event_id);
+
+  // 5. dispatch a task
+  const taskInput = {
+    target: `dsh:node-a:default`,
+    prompt: promptText,
+    actor: '@smoke-tester:hs',
+    threadKey: `mx_smoke`,
+  };
+  const task = await agoraCreateTask(taskInput);
+  console.log('agora task:', task.task_id);
+
+  // 6. poll /api/events and verify the connector receives state changes
+  let lastSince = 0;
+  let sawRunning = false;
+  let sawCompleted = false;
+  for (let attempt = 0; attempt < 6 && !sawCompleted; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    const page = await agoraPollEvents(lastSince);
+    lastSince = page.next_since ?? lastSince;
+    for (const evt of page.events ?? []) {
+      if (evt.task_id === task.task_id) {
+        if (evt.state === 'running') sawRunning = true;
+        if (evt.state === 'completed') sawCompleted = true;
+      }
+    }
+  }
+  console.log('event stream saw running=', sawRunning, 'completed=', sawCompleted);
+  assert.ok(sawRunning, 'expected agora to emit task_state_changed running');
+  assert.ok(sawCompleted, 'expected agora to emit task_state_changed completed');
+
+  console.log('OK smoke-matrix passed.');
+}
+
+main().catch((err) => {
+  if (err instanceof Skipped) {
+    console.warn(`SMOKE SKIPPED: ${err.message}`);
+    process.exit(0);
+  }
+  console.error('SMOKE FAILED:', err);
+  process.exit(1);
+});
