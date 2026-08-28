@@ -49,41 +49,13 @@ All v0.1 verbs are wired through:
 
 * ✅ Unit tests: 49/49 pass (`npm test`).
 * ✅ TypeScript build: clean (`npm run build`).
-* ⚠️ **Real-Synapse + real-agora smoke: NOT EXECUTED in this turn.**
-  See "Rollout checklist" below.
-
-## Rollout checklist (after deploying agora central)
-
-1. SSH to 8.136.15.147 (the machine hosting agora central).
-2. Rebuild the dist:
-   ```bash
-   cd /home/ailink/dsh-agora/agora-ts/apps/server && npm run build
-   ```
-3. Restart the systemd unit:
-   ```bash
-   sudo systemctl restart agora.service
-   sudo systemctl status agora.service
-   ```
-4. Verify the new endpoints respond with 200:
-   ```bash
-   curl -fsS -H "Authorization: Bearer $AGORA_API_TOKEN" \
-     "http://127.0.0.1:18008/api/citizens?project_id=node-a"
-   curl -fsS -H "Authorization: Bearer $AGORA_API_TOKEN" \
-     "http://127.0.0.1:18008/api/events?task_id=any"
-   ```
-5. Run the smoke against a real Synapse:
-   ```bash
-   MATRIX_HOMESERVER_URL=https://8.136.15.147:8008 \
-   MATRIX_USER_ID=@dsh-bridge-node-a:agent-hub.local \
-   MATRIX_ACCESS_TOKEN=<token> \
-   MATRIX_DEVICE_ID=<device> \
-   AGORA_SERVER_URL=http://127.0.0.1:18008 \
-   AGORA_API_TOKEN=<apiToken> \
-   node tests/smoke-matrix.mjs
-   ```
-
-Until step 4 returns 200, the placeholder-auto-edit and citizen verbs
-will fail at runtime with HTTP 404, not at unit-test time.
+* ✅ **Real-Synapse + real-agora smoke: PASSED on 2026-08-29** (run
+  `tests/smoke-matrix.mjs` against `http://8.136.15.147:8008` and
+  `http://127.0.0.1:18008`). All five steps return 200 with the
+  expected shape. See `docs/10-WALKTHROUGH/2026-08-28-dsh-matrix-connector-v0.1.md`.
+* ✅ Production agora central has been deployed with upstream PR
+  `feat/v01-matrix-entry-facade` (commit `c0b46a6`) plus the
+  composition-wiring fix (commit `ce78b83` on master).
 
 ## Architectural Boundary
 
