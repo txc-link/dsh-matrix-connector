@@ -28,7 +28,17 @@ export const VALID_TYPES: ReadonlySet<string> = new Set([
   'event',
   'participant',
   'execution',
+  'thread',
 ] as const);
+
+/**
+ * Identifier pattern for `thread` URIs: the opaque threadKey produced by
+ * buildThreadKey (thread-registry.ts), prefixed `mx_` + lowercase alnum.
+ * Distinct from ID_PATTERN because the threadKey is adapter-generated and
+ * opaque to agora central (turn 59: matrix simulates Discord threads via
+ * per-thread rooms; agora central only ever sees the threadKey).
+ */
+export const THREAD_ID_PATTERN: RegExp = /^mx_[a-z0-9]+$/;
 
 /**
  * Identifier pattern: `<Prefix>-<Body>` where
@@ -117,8 +127,9 @@ export function parseAgoraUri(input: string): AgoraUri {
     throw new Error(`invalid type '${type}'; valid types: ${validList}`);
   }
 
-  if (!validateId(id)) {
-    throw new Error(`invalid id '${id}'; expected pattern <prefix>-<body>`);
+  if (!validateId(id, type)) {
+    const pattern = type === 'thread' ? THREAD_ID_PATTERN.source : ID_PATTERN.source;
+    throw new Error(`invalid id '${id}'; expected ${type === 'thread' ? 'threadKey (mx_…)' : 'pattern <prefix>-<body>'}`);
   }
 
   return sub !== undefined ? { scheme: 'agora', type, id, sub } : { scheme: 'agora', type, id };
@@ -135,12 +146,16 @@ export function validateType(type: string): boolean {
 }
 
 /**
- * Check whether an id matches ID_PATTERN.
+ * Check whether an id matches the pattern for its type.
  *
  * @param id - Id string to check
- * @returns true if id matches pattern
+ * @param type - URI type; 'thread' uses THREAD_ID_PATTERN, others ID_PATTERN
+ * @returns true if id matches the type's pattern
  */
-export function validateId(id: string): boolean {
+export function validateId(id: string, type?: string): boolean {
+  if (type === 'thread') {
+    return THREAD_ID_PATTERN.test(id);
+  }
   return ID_PATTERN.test(id);
 }
 

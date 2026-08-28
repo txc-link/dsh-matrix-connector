@@ -4,9 +4,17 @@
  * §1 boundary: this is the ONLY place that knows both the agora opaque
  * threadKey and the matrix room_id. agora central never sees room_id;
  * matrix central never sees the threadKey.
+ *
+ * v0.4 (R4): JSONL persistence. loadThreadRegistry / saveThreadRegistry
+ * follow the audit-trail sandbox pattern — default path is
+ * ~/.agora/registry/thread-registry.jsonl with workspace-relative fallback
+ * on EROFS/ENOENT.
  */
 
 import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 
 export interface ThreadBinding {
   threadKey: string;
@@ -66,6 +74,33 @@ export class ThreadRegistry {
     return next;
   }
 
+  /**
+   * v0.4 (R4): upsert a full binding (used by JSONL load + room auto-create).
+   * Preserves createdAt from an existing binding when the caller omits it.
+   */
+  upsert(binding: ThreadBinding): ThreadBinding {
+    const now = new Date().toISOString();
+    const existing = this.bindings.get(binding.threadKey);
+    const next: ThreadBinding = {
+      ...binding,
+      createdAt: binding.createdAt ?? existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.bindings.set(next.threadKey, next);
+    this.rememberRoom(next.roomId);
+    return next;
+  }
+
+  /** v0.4 (R4): reverse lookup — find the binding owning a matrix roomId. */
+  getByRoomId(roomId: string): ThreadBinding | undefined {
+    for (const binding of this.bindings.values()) {
+      if (binding.roomId === roomId) {
+        return binding;
+      }
+    }
+    return undefined;
+  }
+
   resolveTaskId(taskId: string): ThreadBinding | undefined {
     for (const binding of this.bindings.values()) {
       if (binding.taskId === taskId) {
@@ -92,4 +127,73 @@ export class ThreadRegistry {
   size(): number {
     return this.bindings.size;
   }
+
+  /** v0.4 (R4): snapshot of every binding (persistence support). */
+  allBindings(): ThreadBinding[] {
+    return Array.from(this.bindings.values());
+  }
+}
+
+export const DEFAULT_REGISTRY_PATH: string = join(
+  homedir(),
+  '.agora',
+  'registry',
+  'thread-registry.jsonl',
+);
+
+/**
+ * Resolve the registry path with sandbox fallback (same pattern as
+ * audit-trail): 1. AGORA_REGISTRY_PATH env, 2. ~/.agora/registry/…,
+ * 3. workspace-relative .agora/registry/….
+ */
+export function resolveRegistryPath(): string {
+  const envPath = process.env.AGORA_REGISTRY_PATH;
+  if (envPath) return envPath;
+
+  const homePath = DEFAULT_REGISTRY_PATH;
+  const homeDir = dirname(homePath);
+  try {
+    if (!existsSync(homeDir)) {
+      mkdirSync(homeDir, { recursive: false });
+    }
+    return homePath;
+  } catch (e) {
+    return join(process.cwd(), '.agora', 'registry', 'thread-registry.jsonl');
+  }
+}
+
+/**
+ * Load a ThreadRegistry from a JSONL file. ENOENT (missing file) is not an
+ * error — returns an empty registry (v0.4 sandbox/EPHEMERAL-friendly).
+ */
+export function loadThreadRegistry(path: string): ThreadRegistry {
+  const registry = new ThreadRegistry();
+  if (!existsSync(path)) {
+    return registry;
+  }
+  const content = readFileSync(path, 'utf-8');
+  const lines = content.split('\n').filter((line) => line.length > 0);
+  for (const line of lines) {
+    try {
+      const binding = JSON.parse(line) as ThreadBinding;
+      if (typeof binding?.threadKey === 'string' && typeof binding?.roomId === 'string') {
+        registry.upsert(binding);
+      }
+    } catch (e) {
+      // Skip malformed lines; the registry stays usable.
+    }
+  }
+  return registry;
+}
+
+/**
+ * Persist every binding as one JSONL line. Creates the parent directory.
+ */
+export function saveThreadRegistry(registry: ThreadRegistry, path: string): void {
+  const dir = dirname(path);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  const lines = registry.allBindings().map((b) => JSON.stringify(b));
+  writeFileSync(path, lines.length > 0 ? lines.join('\n') + '\n' : '', 'utf-8');
 }

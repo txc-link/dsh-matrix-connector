@@ -30,6 +30,8 @@ export interface AuditRecord {
   result: 'pass' | 'fail';
   error?: string;
   requiresConfirm: boolean;
+  /** v0.4 (R4): optional event tag, e.g. 'room_created' | 'room_reused'. */
+  event?: string;
 }
 
 export const DEFAULT_AUDIT_PATH: string = join(

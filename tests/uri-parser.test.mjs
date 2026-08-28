@@ -159,12 +159,23 @@ test('parseAgoraUri: throws on trailing slash without sub', () => {
 
 // ===== Constants tests =====
 
-test('VALID_TYPES: contains all 4 valid types', () => {
+test('VALID_TYPES: contains all 5 valid types', () => {
   assert.ok(VALID_TYPES.has('task'));
   assert.ok(VALID_TYPES.has('event'));
   assert.ok(VALID_TYPES.has('participant'));
   assert.ok(VALID_TYPES.has('execution'));
-  assert.equal(VALID_TYPES.size, 4);
+  assert.ok(VALID_TYPES.has('thread'), 'thread added by R4 room auto-create');
+  assert.equal(VALID_TYPES.size, 5);
+});
+
+test('parseAgoraUri: thread type accepts mx_ threadKey id', () => {
+  const uri = parseAgoraUri('agora://thread/mx_abc123');
+  assert.equal(uri.type, 'thread');
+  assert.equal(uri.id, 'mx_abc123');
+});
+
+test('parseAgoraUri: thread type rejects non-mx id', () => {
+  assert.throws(() => parseAgoraUri('agora://thread/Ta-123'), /invalid id/i);
 });
 
 test('ID_PATTERN: matches Ta-123', () => {
