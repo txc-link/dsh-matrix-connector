@@ -12,6 +12,7 @@ export type VerbName =
   | 'artifact'
   | 'brain'
   | 'im'
+  | 'rollup'
   | 'help'
   | 'unknown';
 
@@ -92,6 +93,12 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
         return { verb: 'im', args: [], subVerb: 'help' };
       }
       return { verb: 'im', args: tail, ...(tail[0] !== undefined ? { subVerb: tail[0] } : {}) };
+    }
+    case 'rollup': {
+      // v1.0.1 — `/agora rollup` shows the org war-room view of all rooms
+      // this plugin instance has seen plus all tasks it knows about.
+      // No sub-verb. No required args.
+      return { verb: 'rollup', args: tail };
     }
     case 'help': {
       return { verb: 'help', args: [] };

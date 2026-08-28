@@ -28,6 +28,7 @@ import { HELP_TEXT, renderError, route } from './message-router.js';
 import { ThreadRegistry, buildThreadKey } from './thread-registry.js';
 import { buildPostMortem } from './post-mortem.js';
 import { buildStatusPanel } from './status-panel.js';
+import { renderRollup } from './rollup.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -124,6 +125,9 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     senderMxid: string;
     body: string;
   }): Promise<void> {
+    // v1.0.1 — every incoming room message remembers the room for
+    // the org rollup view.
+    registry.rememberRoom(input.roomId);
     const decision = route(input.body, { commandName: config.commandName });
     if (decision.verb === 'unknown' || decision.verb === 'help') {
       const reply = decision.verb === 'help' ? HELP_TEXT : renderError(decision, config.commandName);
@@ -185,6 +189,17 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         await matrix.sendText(input.roomId, reply);
         return;
       }
+      case 'rollup': {
+        // v1.0.1 — org war-room rollup. Read-only view built from the
+        // plugin's in-memory ThreadRegistry state. Does not query agora
+        // central and does not change any task lifecycle.
+        const reply = renderRollup({
+          rooms: registry.knownRoomIds(),
+          tasks: registry.taskSummaries(),
+        });
+        await matrix.sendText(input.roomId, reply);
+        return;
+      }
       case 'im': {
         if (decision.subVerb === 'health') {
           const h = await agora.health();
@@ -209,6 +224,9 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     const status = typeof evt.state === 'string' ? evt.state : 'running';
     const label = `🤖 ${status} (task_id=${taskId})`;
     await matrix.edit(binding.roomId, binding.placeholderEventId, label);
+    // v1.0.1 — update the in-memory task summary used by /agora rollup.
+    const agent = typeof evt.actor === 'string' && evt.actor.length > 0 ? evt.actor : 'unknown';
+    registry.rememberTask(taskId, binding.roomId, status, agent);
     // v0.3.1 — also try to post the war-room post-mortem summary if
     // the task has a subtask with output (see post-mortem.ts).
     await postMortem.handleTick(evt);

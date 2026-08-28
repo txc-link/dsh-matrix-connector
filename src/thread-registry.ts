@@ -28,6 +28,27 @@ export function buildThreadKey(roomId: string): string {
 
 export class ThreadRegistry {
   private readonly bindings = new Map<string, ThreadBinding>();
+  private readonly knownRooms = new Set<string>();
+  private readonly taskStates = new Map<string, { roomId: string; state: string; agentId: string }>();
+
+  rememberRoom(roomId: string): void {
+    if (typeof roomId === 'string' && roomId.length > 0) {
+      this.knownRooms.add(roomId);
+    }
+  }
+
+  rememberTask(taskId: string, roomId: string, state: string, agentId: string): void {
+    if (typeof taskId !== 'string' || taskId.length === 0) return;
+    this.taskStates.set(taskId, { roomId, state, agentId });
+  }
+
+  knownRoomIds(): string[] {
+    return Array.from(this.knownRooms);
+  }
+
+  taskSummaries(): Array<{ id: string; roomId: string; state: string; agentId: string }> {
+    return Array.from(this.taskStates.entries()).map(([id, v]) => ({ id, ...v }));
+  }
 
   upsertPlaceholder(threadKey: string, roomId: string, eventId: string, taskId: string): ThreadBinding {
     const now = new Date().toISOString();
@@ -41,6 +62,7 @@ export class ThreadRegistry {
       updatedAt: now,
     };
     this.bindings.set(threadKey, next);
+    this.rememberRoom(roomId);
     return next;
   }
 
@@ -63,6 +85,8 @@ export class ThreadRegistry {
 
   clear(): void {
     this.bindings.clear();
+    this.knownRooms.clear();
+    this.taskStates.clear();
   }
 
   size(): number {
