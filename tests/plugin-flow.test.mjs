@@ -139,6 +139,20 @@ function makeAgoraStub() {
       pollEventsCalls += 1;
       return { events: [], nextSince: since };
     },
+    streamEvents: async (_since, signal) => {
+      // SSE mock: return a 200 with a never-yielding body so the SSE loop
+      // in src/index.ts parks here without throwing on real-world plumbing.
+      return new Response(new ReadableStream({
+        start(controller) {
+          if (signal) {
+            signal.addEventListener('abort', () => controller.close());
+          }
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    },
     get pollEventsCalls() { return pollEventsCalls; },
     markCompleted: (id) => { const t = tasks.get(id); if (t) t.status = 'completed'; },
     markRunning: (id) => { const t = tasks.get(id); if (t) t.status = 'running'; },

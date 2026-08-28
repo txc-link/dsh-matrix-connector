@@ -70,6 +70,16 @@ export interface CreateTaskInput {
   creator: string; // user_id-style identifier
   description: string;
   priority: 'low' | 'normal' | 'high';
+  team_override?: {
+    members: Array<{
+      role: string;
+      agentId: string;
+      member_kind?: 'controller' | 'citizen' | 'craftsman';
+      model_preference: string;
+      agent_origin?: 'agora_managed' | 'user_managed';
+      briefing_mode?: 'overlay_full' | 'overlay_delta';
+    }>;
+  };
 }
 
 export interface CreateTaskResponse {

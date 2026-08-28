@@ -84,16 +84,40 @@ test('DispatchBridge.dispatch: posts v0.6.0 schema (no threadKey/actor/target on
     },
   });
   const bridge = new DispatchBridge(agora, { projectId: 'node-a', defaultCreator: '@b:hs', defaultTemplate: 'quick' });
-  const r = await bridge.dispatch(['ask', 'REMOTE_OK']);
+  // Use a Chinese prompt that cannot be misread as a citizen_id.
+  const r = await bridge.dispatch(['帮我', 'REMOTE_OK']);
   assert.equal(r.receipt.task_id, 'task_42');
   assert.match(r.placeholder, /task_42/);
-  assert.equal(captured.input.title, 'ask REMOTE_OK');
+  assert.equal(captured.input.title, '帮我 REMOTE_OK');
   assert.equal(captured.input.type, 'quick');
   assert.equal(captured.input.creator, '@b:hs');
   assert.equal(captured.input.priority, 'normal');
   assert.equal(captured.input.threadKey, undefined);
   assert.equal(captured.input.actor, undefined);
   assert.equal(captured.input.target, undefined);
+  // No @mention in args → no team_override.
+  assert.equal(captured.input.team_override, undefined);
+});
+
+test('DispatchBridge.dispatch: @mention sets team_override with member_kind=citizen', async () => {
+  const captured = { input: null };
+  const agora = makeAgora({
+    agora: {
+      createTask: async (input) => {
+        captured.input = input;
+        return { id: 'task_99', state: 'pending', type: input.type, title: input.title, creator: input.creator };
+      },
+    },
+  });
+  const bridge = new DispatchBridge(agora, { projectId: 'node-a', defaultCreator: '@b:hs', defaultTemplate: 'quick' });
+  const r = await bridge.dispatch(['@code-reviewer', '帮我审', 'PR']);
+  assert.equal(r.receipt.task_id, 'task_99');
+  assert.match(r.placeholder, /@code-reviewer/);
+  assert.ok(captured.input.team_override, 'team_override should be set when @mention is given');
+  assert.equal(captured.input.team_override.members.length, 1);
+  assert.equal(captured.input.team_override.members[0].agentId, 'code-reviewer');
+  assert.equal(captured.input.team_override.members[0].member_kind, 'citizen');
+  assert.equal(captured.input.team_override.members[0].role, 'executor');
 });
 
 test('DispatchBridge.dispatch: empty args throws', async () => {

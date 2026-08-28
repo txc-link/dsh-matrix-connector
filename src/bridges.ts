@@ -24,6 +24,7 @@ import {
   type TaskRecord,
 } from './agora-rest.js';
 import type { ProjectId } from './config.js';
+import { parseDispatchArgs } from './dispatch-args.js';
 
 export class CitizenBridge {
   constructor(private readonly agora: AgoraRestClient) {}
@@ -73,24 +74,34 @@ export class DispatchBridge {
   ) {}
 
   async dispatch(args: string[]): Promise<{ receipt: DispatchReceipt; placeholder: string }> {
-    if (args.length === 0) {
-      throw new Error('dispatch requires a non-empty prompt');
-    }
+    const parsed = parseDispatchArgs(args);
     const template = this.opts.defaultTemplate ?? 'quick';
-    const prompt = args.join(' ');
     const input: CreateTaskInput = {
-      title: prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt,
+      title: parsed.prompt.length > 80 ? `${parsed.prompt.slice(0, 77)}...` : parsed.prompt,
       type: template,
       creator: this.opts.defaultCreator,
-      description: prompt,
+      description: parsed.prompt,
       priority: 'normal',
     };
+    if (parsed.citizen_id) {
+      input.team_override = {
+        members: [
+          {
+            role: 'executor',
+            agentId: parsed.citizen_id,
+            member_kind: 'citizen',
+            model_preference: '',
+          },
+        ],
+      };
+    }
     const response: CreateTaskResponse = await this.agora.createTask(input);
     const receipt: DispatchReceipt = {
       task_id: response.id,
       state: response.state,
     };
-    const placeholder = `🤖 thinking... (task_id=${receipt.task_id})`;
+    const target = parsed.citizen_id ? ` → @${parsed.citizen_id}` : '';
+    const placeholder = `🤖 thinking...${target} (task_id=${receipt.task_id})`;
     return { receipt, placeholder };
   }
 }
