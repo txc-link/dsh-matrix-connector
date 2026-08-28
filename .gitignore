@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+lib/
+
+# Sandbox audit-trail fallback (per AGENTS.md §3 worktree hygiene)
+.agora/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
