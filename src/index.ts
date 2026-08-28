@@ -27,6 +27,7 @@ import { MatrixClient } from './matrix-client.js';
 import { HELP_TEXT, renderError, route } from './message-router.js';
 import { ThreadRegistry, buildThreadKey } from './thread-registry.js';
 import { buildPostMortem } from './post-mortem.js';
+import { buildStatusPanel } from './status-panel.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -89,6 +90,35 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     posted: postedPostMortem,
   });
 
+  // v0.3.3 — per-room status panel. Each room gets a panel that is
+  // created on the first SSE tick and edited on subsequent ticks.
+  // Panel refresh is invoked after the post-mortem so the panel and
+  // the summary can coexist for the same tick.
+  const roomTasks = new Map<string, Set<string>>();
+  function rememberTask(roomId: string, taskId: string): void {
+    const set = roomTasks.get(roomId) ?? new Set<string>();
+    set.add(taskId);
+    roomTasks.set(roomId, set);
+  }
+  function panelFor(roomId: string) {
+    return buildStatusPanel({
+      matrix,
+      taskBridge: {
+        async show(taskId) {
+          const raw = await agora.getTask(taskId) as unknown as Record<string, unknown>;
+          return {
+            id: String(raw.id ?? taskId),
+            state: String(raw.state ?? 'unknown'),
+            team: (raw.team as { members: Array<{ role: string; agentId: string }> }) ?? { members: [] },
+            current_stage: typeof raw.current_stage === 'string' ? raw.current_stage : null,
+          };
+        },
+      },
+      roomTasks,
+      roomId,
+    });
+  }
+
   async function handleRoomMessage(input: {
     roomId: string;
     senderMxid: string;
@@ -127,6 +157,9 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         const { receipt, placeholder } = await dispatchBridge.dispatch(decision.args, roster);
         const sent = await matrix.sendText(input.roomId, placeholder);
         registry.upsertPlaceholder(threadKey, input.roomId, sent.eventId, receipt.task_id);
+        // v0.3.3 — register the task in this room's panel set so the
+        // status panel can pick it up on the next SSE tick.
+        rememberTask(input.roomId, receipt.task_id);
         return;
       }
       case 'task': {
@@ -179,6 +212,8 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     // v0.3.1 — also try to post the war-room post-mortem summary if
     // the task has a subtask with output (see post-mortem.ts).
     await postMortem.handleTick(evt);
+    // v0.3.3 — refresh the per-room status panel.
+    await panelFor(binding.roomId).handleTick(taskId);
   }
 
   return {
