@@ -1,10 +1,15 @@
 /**
- * src/post-mortem.ts — v0.3.1 war room post-mortem.
+ * src/post-mortem.ts — v0.3.1 war room post-mortem + v1.0.2 artifact summary.
  *
  * Subscribes to agora SSE ticks. For every task that already has a
  * room binding, pulls the latest task record and posts a one-shot
  * summary message to the room when a subtask completes or any output
  * exists. Each task_id fires the summary at most once per session.
+ *
+ * v1.0.2 adds a 'Artifacts (N):' block to the post-mortem with the
+ * first 240 characters of each text artifact. The body fetch is
+ * delegated to the injected artifactLoader so the post-mortem itself
+ * stays I/O-light.
  *
  * Why this is plugin-local and not a Core concept:
  *   - The summary text format is IM-specific (Matrix markdown).
@@ -15,6 +20,16 @@
  *     not by agora central.
  */
 
+import { summarizeArtifacts } from './artifact-summary.js';
+
+export interface PostMortemArtifact {
+  artifact_id?: string;
+  name?: string;
+  media_type?: string;
+  size_bytes?: number;
+  body?: string;
+}
+
 export interface PostMortemTaskRecord {
   id: string;
   state: string;
@@ -24,7 +39,7 @@ export interface PostMortemTaskRecord {
     output?: string | null;
     done_at?: string | null;
   }>;
-  artifacts?: Array<{ artifact_id?: string; name?: string }>;
+  artifacts?: Array<PostMortemArtifact>;
 }
 
 export interface PostMortemDeps {
@@ -34,6 +49,7 @@ export interface PostMortemDeps {
   taskBridge: {
     show: (taskId: string) => Promise<PostMortemTaskRecord>;
   };
+  artifactLoader?: (artifactId: string) => Promise<string | undefined>;
   roomForTask: (taskId: string) => string | undefined;
   posted: Set<string>;
 }
@@ -61,21 +77,52 @@ function hasFinishedSubtask(record: PostMortemTaskRecord): boolean {
   );
 }
 
-function render(record: PostMortemTaskRecord): string {
+async function buildArtifactBlock(
+  record: PostMortemTaskRecord,
+  loader: PostMortemDeps['artifactLoader'],
+): Promise<string> {
+  const artifacts = record.artifacts ?? [];
+  if (artifacts.length === 0) return '';
+  // v1.0.2 — best-effort load each text artifact's body. We swallow
+  // loader errors and just omit the body line for that artifact.
+  if (loader) {
+    for (const a of artifacts) {
+      const id = a.artifact_id;
+      const isText = typeof a.media_type === 'string' && a.media_type.startsWith('text/');
+      if (id && isText && a.body === undefined) {
+        try {
+          const body = await loader(id);
+          if (typeof body === 'string') a.body = body;
+        } catch {
+          /* keep undefined — the renderer shows metadata only */
+        }
+      }
+    }
+  }
+  return summarizeArtifacts(artifacts);
+}
+
+async function render(
+  record: PostMortemTaskRecord,
+  loader: PostMortemDeps['artifactLoader'],
+): Promise<string> {
   const executor = executorAgentId(record) ?? 'unknown';
   const sub = record.subtasks?.[0];
   const output = typeof sub?.output === 'string' && sub.output.length > 0
     ? truncate(sub.output)
     : '(no output)';
   const artifactCount = Array.isArray(record.artifacts) ? record.artifacts.length : 0;
-  return [
+  const lines = [
     `[agora post-mortem] task \`${record.id}\``,
     `  executor: @${executor}`,
     `  state: ${record.state}`,
     `  subtasks: ${record.subtasks?.filter((s) => s.status === 'completed').length ?? 0}/${record.subtasks?.length ?? 0} done`,
     `  output: ${output}`,
     `  artifacts: ${artifactCount} uploaded`,
-  ].join('\n');
+  ];
+  const artifactBlock = await buildArtifactBlock(record, loader);
+  if (artifactBlock) lines.push(artifactBlock);
+  return lines.join('\n');
 }
 
 export function buildPostMortem(deps: PostMortemDeps): PostMortem {
@@ -94,7 +141,8 @@ export function buildPostMortem(deps: PostMortemDeps): PostMortem {
       }
       if (!hasFinishedSubtask(record)) return;
       deps.posted.add(taskId);
-      await deps.matrix.sendText(roomId, render(record));
+      const body = await render(record, deps.artifactLoader);
+      await deps.matrix.sendText(roomId, body);
     },
   };
 }

@@ -69,6 +69,17 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const postedPostMortem = new Set<string>();
   const postMortem = buildPostMortem({
     matrix,
+    artifactLoader: async (artifactId) => {
+      // v1.0.2 — fetch the artifact body via the existing
+      // ArtifactBridge and return the decoded UTF-8 string. We don't
+      // bound the size here; the renderer truncates to 240 chars.
+      try {
+        const c = await artifactBridge.fetchBytes(artifactId);
+        return new TextDecoder().decode(c.bytes);
+      } catch {
+        return undefined;
+      }
+    },
     taskBridge: {
       show: async (taskId) => {
         // TaskBridge.show() formats markdown for IM rendering; the
