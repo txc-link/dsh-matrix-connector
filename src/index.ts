@@ -156,22 +156,85 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
 
       ctx.effect((_dispose) => {
         matrix.startSync();
+
+        // v0.2 — subscribe to the agora central SSE stream. Falls back to
+        // polling only if the stream fails to open (e.g. older central).
         let lastSince = 0;
-        const timer = setInterval(() => {
+        let stopped = false;
+        let streamController: AbortController | null = null;
+        let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+        const startStream = (): void => {
+          if (stopped) return;
+          streamController = new AbortController();
           void agora
-            .pollEvents(lastSince)
-            .then((page) => {
-              lastSince = page.nextSince;
-              for (const evt of page.events) {
-                void handleAgoraEvent(evt);
+            .streamEvents(lastSince, streamController.signal)
+            .then(async (response) => {
+              if (!response.ok || !response.body) {
+                throw new Error(`SSE open failed: HTTP ${response.status}`);
               }
+              ctx.logger('events stream opened');
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+              while (!stopped) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let sep: number;
+                while ((sep = buffer.indexOf('\n\n')) !== -1) {
+                  const frame = buffer.slice(0, sep);
+                  buffer = buffer.slice(sep + 2);
+                  const lines = frame.split('\n');
+                  let eventName = 'message';
+                  let dataLines: string[] = [];
+                  for (const line of lines) {
+                    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+                  }
+                  if (eventName !== 'tick' || dataLines.length === 0) continue;
+                  try {
+                    const parsed = JSON.parse(dataLines.join('\n')) as AgoraEvent;
+                    lastSince = Math.max(lastSince, parsed.seq);
+                    void handleAgoraEvent(parsed);
+                  } catch (err) {
+                    ctx.logger('SSE parse error:', err);
+                  }
+                }
+              }
+              ctx.logger('events stream closed; restarting');
+              if (!stopped) startStream();
             })
             .catch((err: unknown) => {
-              ctx.logger('agora poll failed:', err);
+              if (stopped) return;
+              ctx.logger('SSE stream error; falling back to polling:', err);
+              startPolling();
             });
-        }, config.eventPollIntervalMs);
+        };
+
+        const startPolling = (): void => {
+          if (stopped || fallbackTimer !== null) return;
+          fallbackTimer = setInterval(() => {
+            void agora
+              .pollEvents(lastSince)
+              .then((page) => {
+                lastSince = page.nextSince;
+                for (const evt of page.events) {
+                  void handleAgoraEvent(evt);
+                }
+              })
+              .catch((err: unknown) => {
+                ctx.logger('agora poll failed:', err);
+              });
+          }, config.eventPollIntervalMs);
+        };
+
+        startStream();
+
         return () => {
-          clearInterval(timer);
+          stopped = true;
+          streamController?.abort();
+          if (fallbackTimer !== null) clearInterval(fallbackTimer);
           void matrix.stopSync();
         };
       });

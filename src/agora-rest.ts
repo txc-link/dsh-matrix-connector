@@ -296,6 +296,28 @@ export class AgoraRestClient {
     return this.request<CitizenRecord>('GET', `/api/citizens/${encodeURIComponent(citizenId)}`);
   }
 
+  /**
+   * Subscribe to the agora central SSE event stream. Returns the raw
+   * fetch Response so the caller can read it as a ReadableStream of
+   * UTF-8 text/event-stream frames. The caller is responsible for
+   * aborting the signal to close the stream.
+   *
+   * Returns a Response with `body` available (or null on failure).
+   * The HTTP status + content-type must be checked by the caller; the
+   * stream may not be open (e.g. older central without /api/events/stream).
+   */
+  async streamEvents(
+    since: number,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const init: RequestInit = { method: 'GET', headers: this.headers() };
+    if (signal) init.signal = signal;
+    return this.fetchImpl(
+      `${this.baseUrl}/api/events/stream?since=${encodeURIComponent(String(since))}&project_id=node-a`,
+      init,
+    );
+  }
+
   async pollEvents(since: number, signal?: AbortSignal): Promise<{ events: AgoraEvent[]; nextSince: number }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
