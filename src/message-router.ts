@@ -116,16 +116,12 @@ export function renderError(decision: VerbDecision, commandName = 'agora'): stri
 }
 
 export const HELP_TEXT = [
-  'agora bridge — v0.1 commands:',
-  '  /agora citizen list                       [endpoint not deployed]',
-  '  /agora citizen show <citizen_id>         [endpoint not deployed]',
+  'agora bridge — v0.1.1 commands:',
+  '  /agora citizen list',
+  '  /agora citizen show <citizen_id>',
   '  /agora dispatch <prompt>                 (creates quick task)',
   '  /agora task <task_id> [artifacts]',
   '  /agora artifact <artifact_id>',
   '  /agora brain search <query>',
   '  /agora im health | help',
-  '',
-  'Note: citizen list/show are not yet wired — the upstream PR is merged',
-  'but the running agora central server has not been redeployed. See',
-  'README §"v0.1 Verification" for the rollout status.',
 ].join('\n');

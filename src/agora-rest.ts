@@ -39,17 +39,6 @@
 
 import type { ProjectId } from './config.js';
 
-export class EndpointNotDeployedError extends Error {
-  constructor(endpoint: string) {
-    super(
-      `agora endpoint '${endpoint}' is part of v0.1 scope but is not deployed ` +
-        `on the running agora central server. Deploy the merged PR ` +
-        `'feat/v01-matrix-entry-facade' (commit c0b46a6) and restart the server.`,
-    );
-    this.name = 'EndpointNotDeployedError';
-  }
-}
-
 export interface AgoraFetchOptions {
   baseUrl: string;
   apiToken: string;
@@ -291,20 +280,74 @@ export class AgoraRestClient {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // Endpoints that exist in the upstream PR but are NOT YET deployed.
-  // These methods throw `EndpointNotDeployedError` so the connector can
-  // surface the gap clearly instead of returning fake-empty results.
+  // Endpoints added by upstream PR feat/v01-matrix-entry-facade
+  // (commit c0b46a6 on master). v0.1.1 enables these after the PR is
+  // deployed on agora central.
   // ─────────────────────────────────────────────────────────────────
 
-  async listCitizens(_projectId: ProjectId): Promise<never[]> {
-    throw new EndpointNotDeployedError('GET /api/citizens?project_id=');
+  async listCitizens(projectId: ProjectId, status?: 'active' | 'archived'): Promise<CitizenRecord[]> {
+    const qs = new URLSearchParams({ project_id: projectId });
+    if (status) qs.set('status', status);
+    const response = await this.request<{ citizens: CitizenRecord[] }>('GET', `/api/citizens?${qs.toString()}`);
+    return response.citizens;
   }
 
-  async getCitizen(_citizenId: string): Promise<never> {
-    throw new EndpointNotDeployedError('GET /api/citizens/:id');
+  async getCitizen(citizenId: string): Promise<CitizenRecord> {
+    return this.request<CitizenRecord>('GET', `/api/citizens/${encodeURIComponent(citizenId)}`);
   }
 
-  async pollEvents(_since: number): Promise<{ events: never[]; nextSince: number }> {
-    throw new EndpointNotDeployedError('GET /api/events?since=');
+  async pollEvents(since: number, signal?: AbortSignal): Promise<{ events: AgoraEvent[]; nextSince: number }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/events?since=${encodeURIComponent(String(since))}`, {
+        method: 'GET',
+        headers: this.headers(),
+        signal: signal ?? controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`agora GET /api/events failed: ${response.status} ${await response.text()}`);
+      }
+      const body = (await response.json()) as { events: AgoraEvent[]; next_since?: number };
+      const events = body.events ?? [];
+      const maxSeq = events.reduce((acc, evt) => Math.max(acc, evt.seq), since);
+      const nextSince = body.next_since ?? maxSeq;
+      return { events, nextSince };
+    } finally {
+      clearTimeout(timer);
+    }
   }
+}
+
+export interface CitizenRecord {
+  citizen_id: string;
+  project_id: ProjectId;
+  role_id: string;
+  display_name: string;
+  persona: string | null;
+  status: 'active' | 'archived';
+  boundaries: string[];
+  skills_ref: string[];
+  channel_policies: Record<string, unknown>;
+  runtime_projection: { adapter: string; auto_provision: boolean; metadata: Record<string, unknown> };
+}
+
+export interface AgoraEvent {
+  seq: number;
+  type: 'task_state_changed' | 'artifact_created' | 'inbox_new' | 'coord_run_progress' | 'progress:log' | 'progress:progress' | string;
+  task_id?: string;
+  state?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+  stage_id?: string | null;
+  from_state?: string | null;
+  to_state?: string | null;
+  actor?: string | null;
+  detail?: unknown;
+  progress_content?: string | null;
+  created_at?: string;
+  [k: string]: unknown;
+}
+
+export interface AgoraEventPage {
+  events: AgoraEvent[];
+  nextSince: number;
 }

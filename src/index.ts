@@ -1,28 +1,21 @@
 /**
  * dsh-matrix-connector — Cordis plugin entry.
  *
- * v0.1 scope (probe-verified, 2026-08-28):
+ * v0.1.1 scope (deployed after upstream PR feat/v01-matrix-entry-facade,
+ * commit c0b46a6):
  *   - matrix room → /agora slash command parser
- *   - agora central REST bridge for task / brain / artifact / health
+ *   - agora central REST bridge for citizen / task / brain / artifact
  *   - opaque threadKey ↔ matrix room placeholder registry (plugin-internal only)
- *   - placeholder edits driven by the plugin's own task-state polling
+ *   - placeholder edits driven by polling GET /api/events
  *
  * §1 boundary: this plugin is the ONLY module that knows both matrix room_id
  * and agora threadKey. agora central sees opaque threadKey; matrix sees
  * opaque eventId. Neither leaks.
- *
- * v0.1 honesty note: `pollEvents` is not implemented against the deployed
- * server because `GET /api/events` is not exposed (merged upstream PR
- * feat/v01-matrix-entry-facade, awaiting deployment). v0.1 therefore does
- * NOT auto-edit placeholders when the task state changes — the placeholder
- * stays at "🤖 thinking..." until the user runs `/agora task <id>` to
- * refresh it. This is documented in the README and explicitly marked as a
- * v0.1 limitation.
  */
 
 import type { MatrixConnectorConfig } from './config.js';
 import { buildConfig } from './config.js';
-import { AgoraRestClient, EndpointNotDeployedError } from './agora-rest.js';
+import { AgoraRestClient, type AgoraEvent } from './agora-rest.js';
 import {
   ArtifactBridge,
   AttentionBridge,
@@ -84,65 +77,71 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     }
 
     const projectId = config.nodeId;
-    try {
-      switch (decision.verb) {
-        case 'citizen': {
-          if (decision.subVerb === 'show') {
-            const reply = await citizenBridge.show(decision.args[0]!);
-            await matrix.sendText(input.roomId, reply);
-            return;
-          }
-          const reply = await citizenBridge.list(projectId);
+    switch (decision.verb) {
+      case 'citizen': {
+        if (decision.subVerb === 'show') {
+          const reply = await citizenBridge.show(decision.args[0]!);
           await matrix.sendText(input.roomId, reply);
           return;
         }
-        case 'dispatch': {
-          const threadKey = buildThreadKey(input.roomId);
-          const { receipt, placeholder } = await dispatchBridge.dispatch(decision.args);
-          const sent = await matrix.sendText(input.roomId, placeholder);
-          registry.upsertPlaceholder(threadKey, input.roomId, sent.eventId, receipt.task_id);
-          return;
-        }
-        case 'task': {
-          const taskId = decision.args[0]!;
-          const includeArtifacts = decision.args.includes('artifacts');
-          const head = await taskBridge.show(taskId);
-          if (includeArtifacts) {
-            const tail = await taskBridge.listArtifactsFor(taskId);
-            await matrix.sendText(input.roomId, `${head}\n${tail}`);
-          } else {
-            await matrix.sendText(input.roomId, head);
-          }
-          return;
-        }
-        case 'artifact': {
-          const c = await artifactBridge.fetchBytes(decision.args[0]!);
-          const upload = await matrix.uploadMxc(c.name, c.mediaType, c.bytes);
-          await matrix.sendText(input.roomId, `uploaded: ${upload.mxcUri} (${upload.sizeBytes} bytes)`);
-          return;
-        }
-        case 'brain': {
-          const reply = await attentionBridge.search(projectId, decision.args.join(' '));
-          await matrix.sendText(input.roomId, reply);
-          return;
-        }
-        case 'im': {
-          if (decision.subVerb === 'health') {
-            const h = await agora.health();
-            await matrix.sendText(input.roomId, `health: ${h.status}`);
-            return;
-          }
-          await matrix.sendText(input.roomId, HELP_TEXT);
-          return;
-        }
-      }
-    } catch (err) {
-      if (err instanceof EndpointNotDeployedError) {
-        await matrix.sendText(input.roomId, err.message);
+        const reply = await citizenBridge.list(projectId);
+        await matrix.sendText(input.roomId, reply);
         return;
       }
-      throw err;
+      case 'dispatch': {
+        const threadKey = buildThreadKey(input.roomId);
+        const { receipt, placeholder } = await dispatchBridge.dispatch(decision.args);
+        const sent = await matrix.sendText(input.roomId, placeholder);
+        registry.upsertPlaceholder(threadKey, input.roomId, sent.eventId, receipt.task_id);
+        return;
+      }
+      case 'task': {
+        const taskId = decision.args[0]!;
+        const includeArtifacts = decision.args.includes('artifacts');
+        const head = await taskBridge.show(taskId);
+        if (includeArtifacts) {
+          const tail = await taskBridge.listArtifactsFor(taskId);
+          await matrix.sendText(input.roomId, `${head}\n${tail}`);
+        } else {
+          await matrix.sendText(input.roomId, head);
+        }
+        return;
+      }
+      case 'artifact': {
+        const c = await artifactBridge.fetchBytes(decision.args[0]!);
+        const upload = await matrix.uploadMxc(c.name, c.mediaType, c.bytes);
+        await matrix.sendText(input.roomId, `uploaded: ${upload.mxcUri} (${upload.sizeBytes} bytes)`);
+        return;
+      }
+      case 'brain': {
+        const reply = await attentionBridge.search(projectId, decision.args.join(' '));
+        await matrix.sendText(input.roomId, reply);
+        return;
+      }
+      case 'im': {
+        if (decision.subVerb === 'health') {
+          const h = await agora.health();
+          await matrix.sendText(input.roomId, `health: ${h.status}`);
+          return;
+        }
+        await matrix.sendText(input.roomId, HELP_TEXT);
+        return;
+      }
     }
+  }
+
+  async function handleAgoraEvent(evt: AgoraEvent): Promise<void> {
+    const taskId = typeof evt.task_id === 'string' ? evt.task_id : undefined;
+    if (!taskId) {
+      return;
+    }
+    const binding = registry.resolveTaskId(taskId);
+    if (!binding || !binding.placeholderEventId) {
+      return;
+    }
+    const status = typeof evt.state === 'string' ? evt.state : 'running';
+    const label = `🤖 ${status} (task_id=${taskId})`;
+    await matrix.edit(binding.roomId, binding.placeholderEventId, label);
   }
 
   return {
@@ -151,14 +150,29 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         void handleRoomMessage(msg as { roomId: string; senderMxid: string; body: string });
       }) as (...args: unknown[]) => void);
 
-      ctx.effect((dispose) => {
+      ctx.on('agora.events.tick', ((evt: unknown) => {
+        void handleAgoraEvent(evt as AgoraEvent);
+      }) as (...args: unknown[]) => void);
+
+      ctx.effect((_dispose) => {
         matrix.startSync();
-        // v0.1: no event polling — GET /api/events is not deployed. The
-        // placeholder stays at "🤖 thinking..." until the user runs
-        // /agora task <id> to refresh.
+        let lastSince = 0;
+        const timer = setInterval(() => {
+          void agora
+            .pollEvents(lastSince)
+            .then((page) => {
+              lastSince = page.nextSince;
+              for (const evt of page.events) {
+                void handleAgoraEvent(evt);
+              }
+            })
+            .catch((err: unknown) => {
+              ctx.logger('agora poll failed:', err);
+            });
+        }, config.eventPollIntervalMs);
         return () => {
+          clearInterval(timer);
           void matrix.stopSync();
-          dispose();
         };
       });
     },
@@ -166,7 +180,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
 }
 
 // Re-exports for downstream tests / downstream plugin consumers.
-export { AgoraRestClient, EndpointNotDeployedError } from './agora-rest.js';
+export { AgoraRestClient } from './agora-rest.js';
 export { MatrixClient } from './matrix-client.js';
 export { type ThreadBinding, ThreadRegistry, buildThreadKey } from './thread-registry.js';
 export { CitizenBridge, DispatchBridge, TaskBridge, ArtifactBridge, AttentionBridge } from './bridges.js';

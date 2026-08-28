@@ -17,7 +17,7 @@
 
 import {
   AgoraRestClient,
-  EndpointNotDeployedError,
+  type CitizenRecord,
   type CreateTaskInput,
   type CreateTaskResponse,
   type ProjectContextRetrieveResponse,
@@ -28,33 +28,29 @@ import type { ProjectId } from './config.js';
 export class CitizenBridge {
   constructor(private readonly agora: AgoraRestClient) {}
 
-  async list(_projectId: ProjectId): Promise<string> {
-    try {
-      throw new EndpointNotDeployedError('GET /api/citizens?project_id=');
-    } catch (err) {
-      return formatEndpointGap(err, 'citizen list');
+  async list(projectId: ProjectId): Promise<string> {
+    const citizens: CitizenRecord[] = await this.agora.listCitizens(projectId);
+    if (citizens.length === 0) {
+      return 'No citizens visible in this project.';
     }
+    const lines = citizens.map(
+      (c) => `- \`${c.citizen_id}\`  **${c.display_name}**  (${c.role_id}, ${c.status})`,
+    );
+    return `Citizens (${citizens.length}):\n${lines.join('\n')}`;
   }
 
-  async show(_citizenId: string): Promise<string> {
-    try {
-      throw new EndpointNotDeployedError('GET /api/citizens/:id');
-    } catch (err) {
-      return formatEndpointGap(err, 'citizen show');
-    }
-  }
-}
-
-function formatEndpointGap(err: unknown, command: string): string {
-  if (err instanceof EndpointNotDeployedError) {
+  async show(citizenId: string): Promise<string> {
+    const c: CitizenRecord = await this.agora.getCitizen(citizenId);
     return [
-      `⚠️  \`${command}\` is not available yet.`,
-      'This command depends on an agora central endpoint that is merged upstream',
-      'but not yet deployed on the running server. See dsh-matrix-connector',
-      'README §"v0.1 Verification" for the rollout checklist.',
+      `**${c.display_name}** (\`${c.citizen_id}\`)`,
+      `role: ${c.role_id}`,
+      `status: ${c.status}`,
+      `persona: ${c.persona ?? '—'}`,
+      `boundaries: ${c.boundaries.length === 0 ? '—' : c.boundaries.join(', ')}`,
+      `skills_ref: ${c.skills_ref.length === 0 ? '—' : c.skills_ref.join(', ')}`,
+      `runtime_projection: ${c.runtime_projection.adapter}`,
     ].join('\n');
   }
-  throw err;
 }
 
 export interface DispatchBridgeOptions {

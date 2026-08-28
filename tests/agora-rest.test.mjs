@@ -4,14 +4,14 @@
  * Verify request shape + URL building + error propagation against a
  * stub fetch implementation. No real HTTP.
  *
- * NB: listCitizens / getCitizen / pollEvents now throw EndpointNotDeployedError
- * on the deployed server (probe 2026-08-28). The tests assert that contract.
+ * v0.1.1: listCitizens / getCitizen / pollEvents are now real endpoints
+ * (deployed on agora central after upstream PR feat/v01-matrix-entry-facade).
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AgoraRestClient, EndpointNotDeployedError } from '../lib/agora-rest.js';
+import { AgoraRestClient } from '../lib/agora-rest.js';
 
 function makeFetch(captured, responder) {
   return async (url, init) => {
@@ -30,6 +30,19 @@ function okJson(body, status = 200) {
   };
 }
 
+const sampleCitizen = {
+  citizen_id: 'cit-a',
+  project_id: 'node-a',
+  role_id: 'controller',
+  display_name: 'Alpha',
+  persona: 'helpful',
+  status: 'active',
+  boundaries: [],
+  skills_ref: [],
+  channel_policies: {},
+  runtime_projection: { adapter: 'openclaw', auto_provision: false, metadata: {} },
+};
+
 test('agora-rest: listTemplates GETs /api/templates', async () => {
   const captured = [];
   const fetchImpl = makeFetch(captured, () => okJson([
@@ -43,7 +56,7 @@ test('agora-rest: listTemplates GETs /api/templates', async () => {
   assert.equal(captured[0].init.headers.Authorization, 'Bearer tok');
 });
 
-test('agora-rest: createTask posts the v0.6.0 schema (not the v0.1-ideal shape)', async () => {
+test('agora-rest: createTask posts the v0.6.0 schema (no threadKey/actor/target on the wire)', async () => {
   const captured = [];
   const fetchImpl = makeFetch(captured, () => okJson({ id: 't-1', state: 'pending', type: 'quick', title: 'hello', creator: '@u:hs' }));
   const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
@@ -63,28 +76,58 @@ test('agora-rest: createTask posts the v0.6.0 schema (not the v0.1-ideal shape)'
   // threadKey must NOT cross the wire.
   assert.equal(body.threadKey, undefined);
   assert.equal(body.actor, undefined);
+  assert.equal(body.target, undefined);
 });
 
-test('agora-rest: listCitizens throws EndpointNotDeployedError (not deployed)', async () => {
-  const fetchImpl = makeFetch([], () => okJson({ citizens: [] }));
+test('agora-rest: listCitizens encodes project_id (and optional status)', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ citizens: [sampleCitizen] }));
   const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
-  await assert.rejects(client.listCitizens('node-a'), (err) => {
-    assert.ok(err instanceof EndpointNotDeployedError);
-    assert.match(err.message, /\/api\/citizens/);
-    return true;
-  });
+  const citizens = await client.listCitizens('node-a', 'archived');
+  assert.equal(citizens.length, 1);
+  assert.equal(citizens[0].citizen_id, 'cit-a');
+  assert.match(captured[0].url, /\/api\/citizens\?/);
+  assert.match(captured[0].url, /project_id=node-a/);
+  assert.match(captured[0].url, /status=archived/);
 });
 
-test('agora-rest: getCitizen throws EndpointNotDeployedError (not deployed)', async () => {
-  const fetchImpl = makeFetch([], () => okJson({}));
+test('agora-rest: getCitizen fetches single citizen', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson(sampleCitizen));
   const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
-  await assert.rejects(client.getCitizen('cit-a'), (err) => err instanceof EndpointNotDeployedError);
+  const c = await client.getCitizen('cit-a');
+  assert.equal(c.citizen_id, 'cit-a');
+  assert.match(captured[0].url, /\/api\/citizens\/cit-a$/);
 });
 
-test('agora-rest: pollEvents throws EndpointNotDeployedError (not deployed)', async () => {
-  const fetchImpl = makeFetch([], () => okJson({ events: [], next_since: 0 }));
+test('agora-rest: pollEvents returns events + nextSince from the deployed endpoint', async () => {
+  let lastUrl = null;
+  const fetchImpl = async (url, init) => {
+    lastUrl = url;
+    return okJson({
+      events: [
+        {
+          seq: 5,
+          type: 'task_state_changed',
+          task_id: 't-1',
+          state: 'completed',
+          stage_id: null,
+          from_state: 'running',
+          to_state: 'completed',
+          actor: 'system',
+          detail: null,
+          progress_content: null,
+          created_at: '2026-08-28T22:00:00Z',
+        },
+      ],
+      next_since: 6,
+    });
+  };
   const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
-  await assert.rejects(client.pollEvents(0), (err) => err instanceof EndpointNotDeployedError);
+  const page = await client.pollEvents(0);
+  assert.equal(page.events.length, 1);
+  assert.equal(page.nextSince, 6);
+  assert.match(lastUrl, /since=0/);
 });
 
 test('agora-rest: error response throws with status + body', async () => {

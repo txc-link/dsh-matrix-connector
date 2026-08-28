@@ -4,9 +4,8 @@
  * Mock agora-rest client + verify human-readable output the message router
  * will send back to the matrix room.
  *
- * v0.1 reality (2026-08-28 probe): CitizenBridge endpoints are not deployed
- * so the assertions here cover the endpoint-not-deployed message rather
- * than the rich citizen rendering.
+ * v0.1.1: all endpoints are deployed, so the bridges render real data
+ * (no more endpoint-not-deployed stubs).
  */
 
 import { test } from 'node:test';
@@ -19,7 +18,6 @@ import {
   DispatchBridge,
   TaskBridge,
 } from '../lib/bridges.js';
-import { EndpointNotDeployedError } from '../lib/agora-rest.js';
 
 function makeAgora(overrides = {}) {
   return {
@@ -38,25 +36,41 @@ function makeAgora(overrides = {}) {
     listArtifacts: async () => [],
     getArtifact: async () => ({}),
     getArtifactContent: async (id) => ({ artifact_id: id, bytes: new Uint8Array([1, 2, 3]), media_type: 'text/plain', name: 'a.txt' }),
-    listCitizens: async () => { throw new EndpointNotDeployedError('GET /api/citizens'); },
-    getCitizen: async () => { throw new EndpointNotDeployedError('GET /api/citizens/:id'); },
-    pollEvents: async () => { throw new EndpointNotDeployedError('GET /api/events'); },
+    listCitizens: async (_projectId) => overrides.citizens ?? [
+      { citizen_id: 'cit-a', project_id: 'node-a', role_id: 'controller', display_name: 'Alpha', persona: null, status: 'active', boundaries: [], skills_ref: [], channel_policies: {}, runtime_projection: { adapter: 'openclaw', auto_provision: false, metadata: {} } },
+      { citizen_id: 'cit-b', project_id: 'node-a', role_id: 'craftsman', display_name: 'Beta', persona: null, status: 'active', boundaries: [], skills_ref: [], channel_policies: {}, runtime_projection: { adapter: 'openclaw', auto_provision: false, metadata: {} } },
+    ],
+    getCitizen: async (id) => overrides.citizen ?? {
+      citizen_id: id, project_id: 'node-a', role_id: 'controller', display_name: 'Alpha', persona: 'helpful assistant', status: 'active',
+      boundaries: ['no shell'], skills_ref: ['agora.citizen'],
+      channel_policies: {}, runtime_projection: { adapter: 'openclaw', auto_provision: false, metadata: {} },
+    },
+    pollEvents: async () => ({ events: [], nextSince: 0 }),
     ...overrides.agora,
   };
 }
 
-test('CitizenBridge.list: surfaces the endpoint-not-deployed gap', async () => {
+test('CitizenBridge.list: renders header + bullet per citizen', async () => {
   const bridge = new CitizenBridge(makeAgora());
   const out = await bridge.list('node-a');
-  assert.match(out, /not available yet/);
-  assert.match(out, /citizen list/);
+  assert.match(out, /Citizens \(2\)/);
+  assert.match(out, /Alpha/);
+  assert.match(out, /Beta/);
+  assert.match(out, /cit-a/);
 });
 
-test('CitizenBridge.show: surfaces the endpoint-not-deployed gap', async () => {
+test('CitizenBridge.list: empty project returns empty notice', async () => {
+  const bridge = new CitizenBridge(makeAgora({ citizens: [] }));
+  const out = await bridge.list('node-a');
+  assert.match(out, /No citizens visible/);
+});
+
+test('CitizenBridge.show: renders persona + boundaries + skills', async () => {
   const bridge = new CitizenBridge(makeAgora());
   const out = await bridge.show('cit-a');
-  assert.match(out, /not available yet/);
-  assert.match(out, /citizen show/);
+  assert.match(out, /helpful assistant/);
+  assert.match(out, /no shell/);
+  assert.match(out, /agora.citizen/);
 });
 
 test('DispatchBridge.dispatch: posts v0.6.0 schema (no threadKey/actor/target on the wire)', async () => {
@@ -73,7 +87,6 @@ test('DispatchBridge.dispatch: posts v0.6.0 schema (no threadKey/actor/target on
   const r = await bridge.dispatch(['ask', 'REMOTE_OK']);
   assert.equal(r.receipt.task_id, 'task_42');
   assert.match(r.placeholder, /task_42/);
-  // wire shape must match the v0.6.0 schema; threadKey never crosses.
   assert.equal(captured.input.title, 'ask REMOTE_OK');
   assert.equal(captured.input.type, 'quick');
   assert.equal(captured.input.creator, '@b:hs');
