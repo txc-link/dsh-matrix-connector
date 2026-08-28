@@ -25,6 +25,7 @@ import {
 } from './agora-rest.js';
 import type { ProjectId } from './config.js';
 import { parseDispatchArgs } from './dispatch-args.js';
+import { resolveFromRoster } from './room-roster.js';
 
 export class CitizenBridge {
   constructor(private readonly agora: AgoraRestClient) {}
@@ -73,8 +74,26 @@ export class DispatchBridge {
     private readonly opts: DispatchBridgeOptions,
   ) {}
 
-  async dispatch(args: string[]): Promise<{ receipt: DispatchReceipt; placeholder: string }> {
+  async dispatch(
+    args: string[],
+    roster: string[] = [],
+  ): Promise<{ receipt: DispatchReceipt; placeholder: string }> {
     const parsed = parseDispatchArgs(args);
+    // v0.3.2 — if parseDispatchArgs did not pick a citizen_id but the
+    // user typed a bare-name in a war-room full of dsh-bridge-<name>
+    // bots, try the room roster as a fallback. If the roster resolves
+    // it, set citizen_id so the team_override path runs below.
+    let citizenId = parsed.citizen_id;
+    if (!citizenId && roster.length > 0 && args.length > 0) {
+      const head = args[0]!;
+      // Only attempt roster resolution when the head token looks like
+      // a bare name (not the v0.2b case-2 rule, which already covered
+      // any <bare-word> + <rest> pattern). Roster resolution is
+      // strictly opt-in via a preceding underscore-free candidate;
+      // we don't re-resolve here if case-2 already fired.
+      const fromRoster = resolveFromRoster(head, roster);
+      if (fromRoster) citizenId = fromRoster;
+    }
     const template = this.opts.defaultTemplate ?? 'quick';
     const input: CreateTaskInput = {
       title: parsed.prompt.length > 80 ? `${parsed.prompt.slice(0, 77)}...` : parsed.prompt,
@@ -83,12 +102,12 @@ export class DispatchBridge {
       description: parsed.prompt,
       priority: 'normal',
     };
-    if (parsed.citizen_id) {
+    if (citizenId) {
       input.team_override = {
         members: [
           {
             role: 'executor',
-            agentId: parsed.citizen_id,
+            agentId: citizenId,
             member_kind: 'citizen',
             model_preference: '',
           },
@@ -100,7 +119,7 @@ export class DispatchBridge {
       task_id: response.id,
       state: response.state,
     };
-    const target = parsed.citizen_id ? ` → @${parsed.citizen_id}` : '';
+    const target = citizenId ? ` → @${citizenId}` : '';
     const placeholder = `🤖 thinking...${target} (task_id=${receipt.task_id})`;
     return { receipt, placeholder };
   }

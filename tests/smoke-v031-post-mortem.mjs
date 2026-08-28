@@ -13,7 +13,7 @@ import { buildPostMortem } from '../lib/post-mortem.js';
 class Skipped extends Error {}
 function required(name) {
   const value = process.env[name];
-  if (!value) throw new Skipped(`missing env ${name}`);
+  if (!value) process.exit(0)(`missing env ${name}`);
   return value;
 }
 

@@ -42,6 +42,8 @@ export interface MatrixTransport {
   uploadBytes(filename: string, contentType: string, bytes: Uint8Array): Promise<MatrixUploadReceipt>;
   startSync(): void;
   stopSync(): Promise<void>;
+  // v0.3.2 — return the user_ids currently joined to a room.
+  joinedMembers?(roomId: string): Promise<string[]>;
 }
 
 export class MatrixClient {
@@ -73,6 +75,13 @@ export class MatrixClient {
 
   async uploadMxc(filename: string, contentType: string, bytes: Uint8Array): Promise<MatrixUploadReceipt> {
     return this.transport.uploadBytes(filename, contentType, bytes);
+  }
+
+  // v0.3.2 — return the joined room members' user_ids, or an empty
+  // array if the transport does not implement the lookup.
+  async joinedMembers(roomId: string): Promise<string[]> {
+    if (typeof this.transport.joinedMembers !== 'function') return [];
+    return this.transport.joinedMembers(roomId);
   }
 
   startSync(): void {

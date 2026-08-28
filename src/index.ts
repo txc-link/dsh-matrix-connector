@@ -119,7 +119,12 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       }
       case 'dispatch': {
         const threadKey = buildThreadKey(input.roomId);
-        const { receipt, placeholder } = await dispatchBridge.dispatch(decision.args);
+        // v0.3.2 — if the parseDispatchArgs() caller did not yield a
+        // citizen_id (e.g. user typed `/agora dispatch <bare-name>` in a
+        // room full of dsh-bridge-<name> bots), resolve against the
+        // room roster as a last-chance fallback.
+        const roster = await matrix.joinedMembers(input.roomId);
+        const { receipt, placeholder } = await dispatchBridge.dispatch(decision.args, roster);
         const sent = await matrix.sendText(input.roomId, placeholder);
         registry.upsertPlaceholder(threadKey, input.roomId, sent.eventId, receipt.task_id);
         return;
