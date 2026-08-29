@@ -83,6 +83,17 @@ export class ThreadRegistry {
     return this.bindings.has(threadKey);
   }
 
+  // v0.5 — R-D: reverse lookup roomId → threadKey. Used by the reply
+  // ingest wiring to resolve whether a room is a task room.
+  threadKeyFor(roomId: string): string | undefined {
+    for (const binding of this.bindings.values()) {
+      if (binding.roomId === roomId) {
+        return binding.threadKey;
+      }
+    }
+    return undefined;
+  }
+
   clear(): void {
     this.bindings.clear();
     this.knownRooms.clear();

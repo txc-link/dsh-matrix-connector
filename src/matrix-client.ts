@@ -44,6 +44,26 @@ export interface MatrixTransport {
   stopSync(): Promise<void>;
   // v0.3.2 — return the user_ids currently joined to a room.
   joinedMembers?(roomId: string): Promise<string[]>;
+  // v0.5 — R-D: subscribe to raw matrix timeline events (m.room.message
+  // with m.relates_to). The handler receives the raw event payload;
+  // matrix protocol parsing lives in the adapter, never in agora Core.
+  onTimelineEvent?(handler: (event: MatrixTimelineEvent) => void): void;
+}
+
+/**
+ * v0.5 — R-D: raw matrix timeline event surface handed to plugin wiring.
+ * This is matrix protocol shape (adapter side). It is translated into
+ * opaque fields (see reply-ingest.ts) before reaching agora Core.
+ */
+export interface MatrixTimelineEvent {
+  roomId: string;
+  eventId: string;
+  sender: string;
+  type: string;
+  body?: string;
+  relatesTo?: { inReplyTo?: { eventId?: string } };
+  originServerTs?: number;
+  isOwn?: boolean;
 }
 
 /**
@@ -103,6 +123,13 @@ export class MatrixClient {
   async joinedMembers(roomId: string): Promise<string[]> {
     if (typeof this.transport.joinedMembers !== 'function') return [];
     return this.transport.joinedMembers(roomId);
+  }
+
+  // v0.5 — R-D: subscribe to raw matrix timeline events. No-op when the
+  // transport does not implement the subscription surface.
+  onTimelineEvent(handler: (event: MatrixTimelineEvent) => void): void {
+    if (typeof this.transport.onTimelineEvent !== 'function') return;
+    this.transport.onTimelineEvent(handler);
   }
 
   startSync(): void {
