@@ -31,6 +31,8 @@ import { buildStatusPanel } from './status-panel.js';
 import { renderRollup } from './rollup.js';
 import { buildStuckAlert } from './stuck-alert.js';
 import { renderStuckList } from './stuck-list.js';
+import { ingestMatrixReply } from './reply-ingest.js';
+import type { MatrixTimelineEvent } from './matrix-client.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -318,6 +320,33 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       ctx.on('agora.events.tick', ((evt: unknown) => {
         void handleAgoraEvent(evt as AgoraEvent);
       }) as (...args: unknown[]) => void);
+
+      // v0.5 — R-D: inbound reply wiring. Raw matrix timeline events
+      // (m.room.message with m.relates_to) → ingestMatrixReply → agora
+      // POST /api/tasks/:id/conversation/reply. §1: matrix protocol
+      // parsing stays here (adapter side); agora Core only sees opaque
+      // provider_message_ref / parent_message_ref / thread_task_binding_key.
+      matrix.onTimelineEvent((evt: MatrixTimelineEvent) => {
+        if (evt.type !== 'm.room.message') return;
+        if (evt.isOwn) return;
+        void ingestMatrixReply({
+          agora,
+          threadKeyOf: (roomId) => registry.threadKeyFor(roomId),
+          taskIdOf: (threadKey) => registry.get(threadKey)?.taskId ?? undefined,
+          event: {
+            roomId: evt.roomId,
+            eventId: evt.eventId,
+            sender: evt.sender,
+            body: evt.body ?? '',
+            ...(evt.relatesTo ? { relatesTo: evt.relatesTo } : {}),
+          },
+          occurredAt: evt.originServerTs
+            ? new Date(evt.originServerTs).toISOString()
+            : new Date().toISOString(),
+        }).catch((err: unknown) => {
+          ctx.logger('reply ingest failed:', err);
+        });
+      });
 
       ctx.effect((_dispose) => {
         matrix.startSync();

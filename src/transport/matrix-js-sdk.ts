@@ -10,6 +10,8 @@
  *   - createRoom — name/topic/visibility/preset → room_id
  *   - joinedMembers — user_ids currently joined
  *   - isConnected — lifecycle query
+ *   - onTimelineEvent — v0.5 (R-D): raw timeline event subscription
+ *     (m.room.message + m.relates_to.m.in_reply_to) for inbound replies
  *
  * Pure mapper methods (buildSendContent, buildEditContent, toSendReceipt,
  * toCreateRoomReceipt) are exposed for unit tests without I/O.
@@ -19,13 +21,14 @@
  * the default per turn 118 E2EE decision (disabled by default).
  */
 
-import { createClient, type MatrixClient as SdkMatrixClient, type Visibility, type Preset } from 'matrix-js-sdk';
+import { createClient, type MatrixClient as SdkMatrixClient, type Visibility, type Preset, type Room, type MatrixEvent } from 'matrix-js-sdk';
 import type {
   MatrixRoomMessage,
   MatrixSendReceipt,
   MatrixEditReceipt,
   MatrixUploadReceipt,
   MatrixTransport,
+  MatrixTimelineEvent,
 } from '../matrix-client.js';
 
 export interface MatrixJsSdkTransportOptions {
@@ -83,6 +86,41 @@ export class MatrixJsSdkTransport implements MatrixTransport {
     // matrix-js-sdk's startClient already begins the /sync loop; we leave
     // startSync as a no-op for API symmetry with the stub transport. Real
     // lifecycle control lives in connect()/stopSync().
+  }
+
+  /**
+   * v0.5 — R-D: subscribe to raw matrix timeline events.
+   *
+   * matrix-js-sdk fires RoomEvent.Timeline for live /sync events; we
+   * translate the SDK event into the adapter-level MatrixTimelineEvent
+   * surface (matrix protocol shape only — never reaches agora Core).
+   */
+  public onTimelineEvent(handler: (event: MatrixTimelineEvent) => void): void {
+    if (!this.sdk) return;
+    this.sdk.on('Room.timeline' as never, ((event: MatrixEvent, room: Room) => {
+      if (!event || !room) return;
+      const type = event.getType();
+      if (type !== 'm.room.message') return;
+      const content = event.getContent() as {
+        body?: string;
+        'm.relates_to'?: { 'm.in_reply_to'?: { event_id?: string } };
+      };
+      const sender = event.getSender();
+      if (!sender) return;
+      const relatesTo = content['m.relates_to']?.['m.in_reply_to']?.event_id
+        ? { inReplyTo: { eventId: content['m.relates_to']!['m.in_reply_to']!.event_id! } }
+        : undefined;
+      handler({
+        roomId: room.roomId,
+        eventId: event.getId() ?? '',
+        sender,
+        type,
+        ...(content.body !== undefined ? { body: content.body } : {}),
+        ...(relatesTo !== undefined ? { relatesTo } : {}),
+        originServerTs: event.getTs(),
+        isOwn: sender === this.opts.userId,
+      });
+    }) as never);
   }
 
   public async stopSync(): Promise<void> {
