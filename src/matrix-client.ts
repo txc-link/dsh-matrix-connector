@@ -46,6 +46,27 @@ export interface MatrixTransport {
   joinedMembers?(roomId: string): Promise<string[]>;
 }
 
+/**
+ * v0.4.0 — optional room creator surface. Real MatrixTransport
+ * implementations (matrix-js-sdk) implement this; legacy stubs do not.
+ * `MatrixClient.createRoom` checks for it before delegating.
+ */
+export interface MatrixRoomCreator {
+  createRoom(options: {
+    name?: string;
+    topic?: string;
+    visibility?: 'public' | 'private';
+    preset?: 'private_chat' | 'public_chat' | 'trusted_private_chat';
+  }): Promise<{ roomId: string }>;
+}
+
+export interface CreateRoomArgs {
+  readonly name?: string;
+  readonly topic?: string;
+  readonly visibility?: 'public' | 'private';
+  readonly preset?: 'private_chat' | 'public_chat' | 'trusted_private_chat';
+}
+
 export class MatrixClient {
   constructor(private readonly transport: MatrixTransport) {}
 
@@ -90,5 +111,26 @@ export class MatrixClient {
 
   async stopSync(): Promise<void> {
     await this.transport.stopSync();
+  }
+
+  /**
+   * v0.4.0 — create a matrix room. Requires the transport to implement
+   * the optional MatrixRoomCreator surface (matrix-js-sdk-backed
+   * transports do; legacy stubs do not). Throws a clear error otherwise.
+   */
+  async createRoom(args: CreateRoomArgs): Promise<{ roomId: string }> {
+    const t = this.transport as unknown as Partial<MatrixRoomCreator>;
+    if (typeof t.createRoom !== 'function') {
+      throw new Error(
+        'MatrixClient.createRoom: underlying transport does not implement createRoom() — ' +
+        'use a matrix-js-sdk-backed transport.',
+      );
+    }
+    const opts: { name?: string; topic?: string; visibility?: 'public'|'private'; preset?: 'private_chat'|'public_chat'|'trusted_private_chat' } = {};
+    if (args.name !== undefined) opts.name = args.name;
+    if (args.topic !== undefined) opts.topic = args.topic;
+    if (args.visibility !== undefined) opts.visibility = args.visibility;
+    if (args.preset !== undefined) opts.preset = args.preset;
+    return t.createRoom(opts);
   }
 }

@@ -410,6 +410,24 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
 // Re-exports for downstream tests / downstream plugin consumers.
 export { AgoraRestClient } from './agora-rest.js';
 export { MatrixClient } from './matrix-client.js';
+export type {
+  MatrixRoomMessage,
+  MatrixSendReceipt,
+  MatrixEditReceipt,
+  MatrixUploadReceipt,
+  MatrixTransport,
+  MatrixRoomCreator,
+  CreateRoomArgs,
+} from './matrix-client.js';
+export {
+  MatrixJsSdkTransport,
+  createBotTransport,
+  createAppServiceTransport,
+  type BotTransportOptions,
+  type AppServiceTransportOptions,
+  type CreateRoomOptions,
+  type CreateRoomReceipt,
+} from './transport/index.js';
 export { type ThreadBinding, ThreadRegistry, buildThreadKey } from './thread-registry.js';
 export { CitizenBridge, DispatchBridge, TaskBridge, ArtifactBridge, AttentionBridge } from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
