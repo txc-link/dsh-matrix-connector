@@ -145,3 +145,46 @@ export const matrixConnectorAcl = {
 ## 8. Change Log
 
 - 2026-08-29: Phase 2 SSoT 建立 (本文件); turn 19 总工决策 Q-E1=a/Q-E2=d/Q-E3=a
+
+---
+
+## 9. Phase 3 — R-E Space 嵌套 (turn 142 启动)
+
+### 9.1 Scope
+
+R-E = connector 侧 Space 适配，让 matrix Space（聚合多房间的话题容器）作为 agora task 的可选 IM 容器。
+
+- Space 子房间列表
+- Space 事件流
+- Space → room 路由（一个 Space 内的所有 child room 消息聚合到一个 thread）
+- adapter 通过 matrix-js-sdk v34.13.0 Space API 实现
+
+### 9.2 历史风险 (已记)
+
+- matrix-js-sdk Space API 历史上 unstable → R-E 推到 phase 3
+- Phase 3 启动时需重新验证 SDK v34.13.0 Space API 状态 (R-E.1 任务)
+
+### 9.3 Status
+
+| Slice | Status | Notes |
+|---|---|---|
+| R-E.1 SDK Space API 验证 + adapter 设计 + TDD 失败测试 | ⏳ in_progress | task_plan: `Doc/09-PLANNING/TASKS/2026-08-30-r-e-space-nesting/` |
+| R-E.2 Space 实装 + 真实 Synapse Space 冒烟 | ⏳ blocked on R-E.1 | 同 task_dir |
+
+### 9.4 Worktree
+
+| worktree | branch | 起点 | 当前 |
+|---|---|---|---|
+| `/home/ailink/dsh-agora/.worktrees/r-e-space-nesting` | `feat/r-e-space-nesting` | main `7603131` | empty |
+
+### 9.5 与 R-D 的关系
+
+- R-E 复用 R-D 链路的 recordInboundReply / auto-bind thread 入口
+- Space 子房间的回复走同样路径回流 agora server
+- agora-ts 侧本阶段不动 (governance 记 agora-ts SSoT §4)
+
+### 9.6 跨仓 SSoT
+
+- agora-ts SSoT: `dsh-agora/docs/Agora-实施排期-Agora-TS.md` (本阶段 agora-ts 不动)
+- Dashboard SSoT: `dsh-agora/docs/Agora-实施排期-Dashboard.md` (R-F 并行, 不依赖 R-E)
+- R-F task_plan: `dsh-agora/.worktrees/r-f-thread-web-detail/docs/09-PLANNING/TASKS/2026-08-30-r-f-thread-web-detail/`
