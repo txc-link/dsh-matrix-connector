@@ -81,3 +81,53 @@
 - **DSH 重启**：改完 patch 后重启 `dsh web`（`dsh --profile web`）生效。
 - **ERP 变量（AGORA_HOME_DIR 等）**：默认不设（用 `~/.agora`）。仅在 `/root`
   只读等受限环境才需要设，见 `01-deploy-core.sh` 注释。
+
+## 5. Win / Mac 手动装机附录（node-b / node-c）
+
+CORE 侧无法代装的机器，手动执行以下三步（Linux 03 脚本的等价翻译）。凭据值在 CORE 的 `deploy/node-b.env`（Win）/ `node-c.env`（Mac），agora api token 在 CORE `/root/.agora/api-token`。
+
+### ① 安装插件
+
+```bash
+# Windows PowerShell / macOS 相同
+dsh plugin --profile web add <connector 源码路径>
+```
+
+### ② 追加 profile patch（`~/.dsh/profiles/web/cordis.patch.yml` 末尾）
+
+```yaml
+# ── dsh-matrix-connector (node: node-b) ─────────────────────────────
+# Mac 换 node-c: userId/deviceId/nodeId 换成 node-c.env 对应值
+- insert:
+    - id: matrix-connector
+      name: 'dsh-matrix-connector'
+      config:
+        homeserverUrl: 'http://8.136.15.147:8008'
+        userId: '@dsh-bridge-node-b:agent-hub.local'
+        accessToken: '<node-b.env 的 MATRIX_ACCESS_TOKEN>'
+        deviceId: '<node-b.env 的 MATRIX_DEVICE_ID>'
+        agoraServerUrl: 'http://8.136.15.147:18008'
+        agoraApiToken: '<CORE /root/.agora/api-token 同值>'
+        nodeId: 'node-b'
+        commandName: 'agora'
+        nodeEnabled: true
+        shareSessionInChannel: false
+        allowFrom: '*'
+        autoJoin: true
+        eventPollIntervalMs: 5000
+        requestTimeoutMs: 10000
+```
+
+### ③ 校验 + 重启 + 回报
+
+```bash
+dsh --profile web --dump-config | grep matrix-connector   # 有输出 = 配置进入
+dsh --profile web                                          # 重启生效
+```
+
+两台都装完后告诉 CORE 侧 agent「Win/Mac 已装」，agent 会跑三机 `04-verify.sh` 回归并 goal 收官。
+
+常见问题：
+- `dump` 未见 matrix-connector → patch YAML 缩进（`- insert:` 下两级）或引号
+- bot 登录失败 → token 整串复制（`syt_` 开头）、homeserver 是 `http://`（CORE 未开 TLS）
+- 房间没反应 → CORE 侧 agent 可代拉房间邀请（node-b/c 已预先被邀请进组织房间, autoJoin 自动入房）
