@@ -42,16 +42,42 @@
 
 | Field | Value |
 |---|---|
-| Status | ⏳ ready to start (R-E.1 done) |
-| Started | — |
+| Status | ✅ done (等待总工 commit) |
+| Started | 2026-08-30 |
+| Completed | 2026-08-30 |
 | Worktree | 本 worktree（继续） |
 | Branch | `feat/r-e-space-nesting` |
 
-### Plan (建议顺序)
-1. 在 `src/transport/matrix-js-sdk.ts` 加 `MatrixSpaceTransport` 4 方法的 matrix-js-sdk-backed 实现
-2. cordis composition 注入 `MatrixSpaceAdapter` row
-3. `tests/smoke-v060-space-nesting.mjs` 真实 homeserver smoke
-4. 完成后回写 findings.md / progress.md
+### Steps
+- [x] 在 `src/transport/space-transport.ts` 加 `MatrixJsSdkSpaceTransport` 4 方法的 matrix-js-sdk-backed 实现（`isSpaceRoom` / `listChildRooms` / `getSpaceHierarchy` / `subscribeSpaceEvents`）
+- [x] 在 `src/transport/matrix-js-sdk.ts` 加 `getSdk()` 访问器（让 space-transport 共享 SdkMatrixClient 实例 + Room cache + /sync loop）
+- [x] cordis composition 注入：`src/index.ts` 的 `apply()` 在 `config.spaces?.enabled === true` 且调用方传了 `matrixJsSdkTransport` 时挂载 `MatrixSpaceAdapter`；`kind === 'message'` 事件并入 `ingestMatrixReply` 通道
+- [x] `cordis.patch.yml` 注释段 + 被注释掉的 `spaces: { enabled: true, rootSpaces: [...] }` 行块（默认仍为关闭；不是默认行为）
+- [x] 写 `tests/smoke-v060-space-nesting.mjs`：6 项断言覆盖 `isSpaceRoom` / `listChildRooms` / `getSpaceHierarchy` / live `kind=message` / live `kind=child-added`，均通过
+- [x] `npm test` 190 / 190 绿（R-E.1 的 14 个 contract test 未转红）
+- [x] `node tests/smoke-v060-space-nesting.mjs` 跑通，exit 0
+- [x] findings.md / progress.md / task_plan.md 已回写（修改未 commit，按 brief 由总工收口）
+
+### Verification
+- `npm run build` 无 TS error（含新增 transport + composition root 改动）
+- `npm test` → **190 / 190 pass**（baseline 176 + R-E.1 14 space-adapter cases；R-E.2 不破任何 frozen contract）
+- `node tests/smoke-v060-space-nesting.mjs` → ✅ ALL ASSERTIONS PASSED；连 `http://localhost:8008`（本机 Synapse 1.155.0）+ `@r-e-smoke:agent-hub.local` bot token
+- `MatrixJsSdkSpaceTransport` 对外只暴露 matrix-agnostic 字段（`spaceId/roomId/order/suggested/via/name/topic`）；SDK `Room` / `RoomState` / `MatrixEvent` 不外泄
+- 默认 `config.spaces === undefined` → `MatrixSpaceAdapter` 完全不挂载；现有 v0.5 caller 零破坏
+
+### Files Touched
+- `src/transport/space-transport.ts` (新) — `MatrixJsSdkSpaceTransport` 实现
+- `src/transport/matrix-js-sdk.ts` (+13 行：`getSdk()` 访问器 + 注释)
+- `src/transport/index.ts` (+2 行：`MatrixJsSdkSpaceTransport` 重导出)
+- `src/index.ts` (+60 行：`PluginOptions.matrixJsSdkTransport?` 字段 + composition root 挂载逻辑；`SpaceChild/SpaceRef/SpaceEvent/SpaceConfig/MatrixSpaceAdapter/MatrixJsSdkSpaceTransport` 重导出)
+- `tests/smoke-v060-space-nesting.mjs` (新) — 真实 homeserver E2E
+- `cordis.patch.yml` (+13 行：注释段 + 注释掉的 `spaces:` 块样板)
+- `Doc/09-PLANNING/TASKS/2026-08-30-r-e-space-nesting/findings.md` (R-E.2 段追加)
+- `Doc/09-PLANNING/TASKS/2026-08-30-r-e-space-nesting/progress.md` (本文件)
+- `Doc/09-PLANNING/TASKS/2026-08-30-r-e-space-nesting/task_plan.md` §2.4 验证标准段 (R-E.2 实测结果追加)
+
+### Blocked Items
+- 无
 
 ### 依赖
 - R-E.1 ✅

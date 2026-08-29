@@ -24,6 +24,8 @@ import {
   TaskBridge,
 } from './bridges.js';
 import { MatrixClient } from './matrix-client.js';
+import { MatrixJsSdkSpaceTransport } from './transport/space-transport.js';
+import { MatrixSpaceAdapter, type SpaceEvent } from './space-adapter.js';
 import { HELP_TEXT, renderError, route } from './message-router.js';
 import { ThreadRegistry, buildThreadKey } from './thread-registry.js';
 import { buildPostMortem } from './post-mortem.js';
@@ -49,6 +51,15 @@ export interface PluginOptions {
   matrixClient: MatrixClient;
   agora: AgoraRestClient;
   context: CordisContext;
+  /**
+   * v0.6 — R-E.2: optional matrix-js-sdk raw transport. When provided
+   * alongside `config.spaces.enabled === true`, the composition root
+   * mounts the Space adapter and wires child timeline forwarding into
+   * the existing reply-ingest path. Stub callers (unit tests) omit this
+   * field; their stub transport has no SDK client and the Space mount
+   * is silently skipped.
+   */
+  matrixJsSdkTransport?: import('./transport/matrix-js-sdk.js').MatrixJsSdkTransport;
 }
 
 export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
@@ -348,6 +359,61 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         });
       });
 
+      // v0.6 — R-E.2: opt-in Space adapter mount. The matrix-js-sdk raw
+      // transport must be supplied and `config.spaces.enabled` must be
+      // true; otherwise the Space surface is completely inert (preserves
+      // v0.5 caller behaviour). When mounted, every Space root's child
+      // timeline is folded into the existing reply-ingest path — child
+      // rooms with a thread binding receive their m.room.message events
+      // exactly like a top-level room. §1 boundary: matrix protocol
+      // (`m.space.child` state, `Room.isSpaceRoom`) stays in the adapter;
+      // agora Core sees opaque threadKey.
+      const spacesConfig = opts.config.spaces;
+      const matrixJsSdkTransport = opts.matrixJsSdkTransport;
+      if (spacesConfig?.enabled === true && matrixJsSdkTransport) {
+        const spaceTransport = new MatrixJsSdkSpaceTransport({ matrixJsSdkTransport });
+        const spaceAdapter = new MatrixSpaceAdapter(spaceTransport);
+        const rootSpaces = Array.isArray(spacesConfig.rootSpaces) ? spacesConfig.rootSpaces : [];
+        const spaceDisposers: Array<() => void> = [];
+        for (const rootSpaceId of rootSpaces) {
+          if (typeof rootSpaceId !== 'string' || rootSpaceId.length === 0) continue;
+          const dispose = spaceAdapter.subscribeSpaceEvents(
+            rootSpaceId,
+            (evt: SpaceEvent) => {
+              if (evt.kind !== 'message') {
+                ctx.logger(`[space ${rootSpaceId}] ${evt.kind}`);
+                return;
+              }
+              // Forward child timeline messages through the same
+              // reply-ingest path R-D set up. The child room may have its
+              // own thread binding via the parent space's task — but we
+              // do not auto-create one; if no binding exists,
+              // ingestMatrixReply returns 'skipped'.
+              void ingestMatrixReply({
+                agora,
+                threadKeyOf: (roomId) => registry.threadKeyFor(roomId),
+                taskIdOf: (threadKey) => registry.get(threadKey)?.taskId ?? undefined,
+                event: {
+                  roomId: evt.childRoomId,
+                  eventId: evt.eventId,
+                  sender: evt.sender,
+                  body: evt.body,
+                },
+                occurredAt: new Date().toISOString(),
+              }).catch((err: unknown) => {
+                ctx.logger('space reply ingest failed:', err);
+              });
+            },
+          );
+          spaceDisposers.push(dispose);
+        }
+        ctx.effect(() => {
+          return () => {
+            for (const dispose of spaceDisposers) dispose();
+          };
+        });
+      }
+
       ctx.effect((_dispose) => {
         matrix.startSync();
 
@@ -457,6 +523,8 @@ export {
   type CreateRoomOptions,
   type CreateRoomReceipt,
 } from './transport/index.js';
+export { MatrixJsSdkSpaceTransport, type MatrixJsSdkSpaceTransportOptions } from './transport/space-transport.js';
+export { MatrixSpaceAdapter, DEFAULT_SPACE_CONFIG, type SpaceChild, type SpaceRef, type SpaceEvent, type SpaceEventHandler, type SpaceConfig, type MatrixSpaceTransport } from './space-adapter.js';
 export { type ThreadBinding, ThreadRegistry, buildThreadKey } from './thread-registry.js';
 export { CitizenBridge, DispatchBridge, TaskBridge, ArtifactBridge, AttentionBridge } from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';

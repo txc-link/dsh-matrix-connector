@@ -5,6 +5,11 @@
  *   - createBotTransport(opts) — matrix-js-sdk-backed, default mode
  *   - createAppServiceTransport(opts) — placeholder seam; full implementation
  *     lands in T-10
+ *
+ * v0.6 — R-E.2 surface:
+ *   - MatrixJsSdkSpaceTransport — matrix-js-sdk-backed MatrixSpaceTransport
+ *     (wraps a shared SdkMatrixClient). Mounted by the composition root
+ *     only when config.spaces.enabled === true.
  */
 
 import {
@@ -38,3 +43,4 @@ export function createAppServiceTransport(opts: AppServiceTransportOptions): Mat
 }
 
 export { MatrixJsSdkTransport, type CreateRoomOptions, type CreateRoomReceipt } from './matrix-js-sdk.js';
+export { MatrixJsSdkSpaceTransport, type MatrixJsSdkSpaceTransportOptions } from './space-transport.js';

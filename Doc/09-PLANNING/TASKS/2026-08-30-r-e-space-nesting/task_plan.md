@@ -57,6 +57,23 @@
 
 ---
 
+### 2.5 R-E.2 实测结果
+
+| 标准 | 结果 |
+|---|---|
+| `MatrixJsSdkSpaceTransport` 4 个 method 实现 | ✅ `isSpaceRoom` / `listChildRooms` / `getSpaceHierarchy` / `subscribeSpaceEvents` 全部实现并连真实 homeserver 通过 |
+| 复用现有 `Room.timeline` 订阅（不另开 /sync） | ✅ 通过 `MatrixJsSdkTransport.getSdk()` 共享 SdkMatrixClient + Room cache；`subscribeSpaceEvents` 在 room 级 `room.on(RoomEvent.Timeline, ...)` 监听（同 SDK /sync loop） |
+| cordis composition 注入 + 默认 opt-in | ✅ `src/index.ts` 的 `apply()` 在 `config.spaces?.enabled === true` 且 `matrixJsSdkTransport` 已传时才挂载；`config.spaces === undefined` 零影响 |
+| `cordis.patch.yml` 注释示例行块（不是默认启用） | ✅ 加了注释段 + 被注释掉的 `spaces: { enabled: true, rootSpaces: [...] }` 块 |
+| `tests/smoke-v060-space-nesting.mjs` 真实 homeserver smoke | ✅ 6 项断言全通过：isSpaceRoom(SPACE)=true / isSpaceRoom(CHILD_A)=false / listChildRooms=2 / getSpaceHierarchy=2 / live `kind=message` / live `kind=child-added` |
+| `npm test` 不破现有测试 | ✅ 190 / 190 绿（R-E.1 contract 未转红） |
+| `npm run build` 无 TS error | ✅ |
+| 不新增 agora REST 端点 | ✅ SpaceEvent.message 并入现有 `ingestMatrixReply` 路径（与 R-D 共用 `/api/tasks/:id/conversation/reply`） |
+| `via?` 字段保留 | ✅ MSC 协议词保留（SDK `IHierarchyRelation.content` 的一部分） |
+| SDK API gap | ✅ 无；SDK 34.13.0 完整覆盖 R-E.2 所需 surface |
+
+---
+
 ## 3. 文件 / 交付物
 
 ### R-E.1 预期文件

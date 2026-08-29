@@ -12,3 +12,15 @@
         allowFrom: '*'
         autoJoin: true
         eventPollIntervalMs: 5000
+        # ─── v0.6 R-E Space nesting (opt-in) ──────────────────────────────
+        # Space aggregation is OFF by default (preserves v0.5 behaviour).
+        # To enable, uncomment the `spaces` block below AND replace the
+        # `rootSpaces` list with the homeserver room_ids of the matrix
+        # Spaces you want this connector instance to aggregate child
+        # timeline messages from. The smoke test created the
+        # `!OCNKEikkiiJEMdWyiQ:agent-hub.local` Space for verification.
+        #
+        # spaces:
+        #   enabled: true
+        #   rootSpaces:
+        #     - '!OCNKEikkiiJEMdWyiQ:agent-hub.local'
