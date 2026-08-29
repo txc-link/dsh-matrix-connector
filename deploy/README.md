@@ -58,13 +58,19 @@
     --admin-token '<root_admin_token>' --nodes 3 --server-name agent-hub.local
 #     → 生成 node-a.env / node-b.env / node-c.env（各含 token，0600 权限）
 
-# ── 第 3 步：每台 DSH 节点执行（N 次，每台一次）────────────
+# ── 第 3 步：每台 DSH 节点执行（N 次，每台一次，装两插件）──────
+# 3a. CORE 签发该节点 worker token（明文仅返回一次，先取好）
+#     agora node-credentials issue node-b --scope heartbeat --scope dispatch --scope delivery
 ./03-install-dsh-plugin.sh --profile web \
     --homeserver http://8.136.15.147:8008 \
     --agora-url http://8.136.15.147:18008 --agora-token '<api_token>' \
-    --node-id node-a --env-file ./node-a.env \
-    --connector-src /path/to/dsh-matrix-connector   # 或 git url
-#     → dsh plugin add + 写 ~/.dsh/profiles/web/cordis.patch.yml + 重启提示
+    --node-token '<agora_node_xxx worker token>' \
+    --node-id node-b --env-file ./node-b.env \
+    --agent-workspace '/home/me/workspace'
+#     → 装 dsh-agora-plugin(npm) + dsh-matrix-connector(npm)
+#     → 写 agora row + matrix-connector row 到 ~/.dsh/profiles/web/cordis.patch.yml
+#     → dump-config 校验 + 重启提示
+# 备选: --connector-src /path（源码安装）; --skip-governance（只装 connector）
 
 # ── 验证（任一台 DSH 或核心机）──────────────────────────
 ./04-verify.sh --homeserver http://8.136.15.147:8008 \
@@ -84,7 +90,11 @@
 
 ## 5. DSH 节点装机（Win / Mac node-b / node-c）
 
-> 先读 [`deploy/ECOSYSTEM-MAP.md`](./ECOSYSTEM-MAP.md)：两个仓库 × 两个插件的关系与数据流。**节点要装两个插件**——治理接入（dsh-agora-plugin, npm）+ IM 对话（本仓 connector）。下面两段都做。
+> 先读 [`deploy/ECOSYSTEM-MAP.md`](./ECOSYSTEM-MAP.md)：两个仓库 × 两个插件的关系与数据流。**节点要装两个插件**——治理接入（dsh-agora-plugin, npm）+ IM 对话（本仓 connector）。
+>
+> **自动化路径（推荐）**：直接在本机跑 [`deploy/03-install-dsh-plugin.sh`](./03-install-dsh-plugin.sh)（装两插件 + 写两个 patch row + dump 校验一步到位），见上文第 3 步命令。Windows 无原生 bash 时用 Git Bash/WSL 执行。
+>
+> 手动路径（逐条粘贴）见下面 ①—④。
 
 CORE 侧无法代装的机器，手动执行以下三步（Linux 03 脚本的等价翻译）。凭据值在 CORE 的 `deploy/node-b.env`（Win）/ `node-c.env`（Mac），agora api token 在 CORE `/root/.agora/api-token`。
 
