@@ -214,6 +214,33 @@ export class AgoraRestClient {
     return this.request<CreateTaskResponse>('POST', '/api/tasks', input);
   }
 
+  /**
+   * R-D — record an inbound IM reply as a task conversation entry.
+   * Opaque fields only (provider_message_ref / parent_message_ref are
+   * adapter-resolved event ids; thread_task_binding_key is the opaque
+   * threadKey). matrix m.relates_to parsing stays in the adapter.
+   */
+  async recordInboundReply(
+    taskId: string,
+    input: {
+      provider: string;
+      provider_message_ref: string;
+      parent_message_ref?: string;
+      body: string;
+      author_kind: 'human' | 'agent' | 'craftsman' | 'system';
+      author_ref?: string;
+      display_name?: string;
+      occurred_at: string;
+      thread_task_binding_key?: string;
+    },
+  ): Promise<{ id: string; deduped: boolean }> {
+    return this.request<{ id: string; deduped: boolean }>(
+      'POST',
+      `/api/tasks/${encodeURIComponent(taskId)}/conversation/reply`,
+      input,
+    );
+  }
+
   async listProjects(): Promise<ProjectRecord[]> {
     const response = await this.request<{ projects: ProjectRecord[] }>('GET', '/api/projects');
     return response.projects;

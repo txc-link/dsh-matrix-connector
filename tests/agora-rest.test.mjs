@@ -188,3 +188,45 @@ test('agora-rest: searchBrain POSTs context/retrieve with the v0.6.0 shape', asy
   assert.equal(body.limit, 3);
   assert.equal(body.mode, 'lookup');
 });
+test('agora-rest: recordInboundReply POSTs to /api/tasks/:id/conversation/reply', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ id: 'rc-1', deduped: false }, 201));
+  const client = new AgoraRestClient({
+    baseUrl: 'http://agora:8080',
+    apiToken: 'token-1',
+    fetchImpl,
+  });
+  const receipt = await client.recordInboundReply('T-42', {
+    provider: 'matrix',
+    provider_message_ref: '$evt-2',
+    parent_message_ref: '$evt-1',
+    body: '我来处理',
+    author_kind: 'human',
+    author_ref: '@alice:agent-hub.local',
+    occurred_at: '2026-08-30T12:00:00.000Z',
+    thread_task_binding_key: 'mx_abc123',
+  });
+  assert.equal(receipt.id, 'rc-1');
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].url, 'http://agora:8080/api/tasks/T-42/conversation/reply');
+  assert.equal(captured[0].init.method, 'POST');
+  const body = JSON.parse(captured[0].init.body);
+  assert.equal(body.provider, 'matrix');
+  assert.equal(body.parent_message_ref, '$evt-1');
+  assert.equal(body.thread_task_binding_key, 'mx_abc123');
+});
+
+test('agora-rest: recordInboundReply omits optional parent when absent', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ id: 'rc-2', deduped: false }, 201));
+  const client = new AgoraRestClient({ baseUrl: 'http://agora:8080', apiToken: 't', fetchImpl });
+  await client.recordInboundReply('T-43', {
+    provider: 'matrix',
+    provider_message_ref: '$evt-9',
+    body: 'ok',
+    author_kind: 'human',
+    occurred_at: '2026-08-30T12:00:00.000Z',
+  });
+  const body = JSON.parse(captured[0].init.body);
+  assert.equal(body.parent_message_ref, undefined);
+});
