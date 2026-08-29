@@ -116,11 +116,12 @@ dsh plugin --profile web add dsh-agora-plugin
         capabilities: ['research', 'coding']
 ```
 
-### ② 装 IM 对话插件 dsh-matrix-connector（本仓）
+### ② 装 IM 对话插件 dsh-matrix-connector（npm, 首选）
 
 ```bash
-# Windows PowerShell / macOS 相同
-dsh plugin --profile web add <connector 源码路径>
+dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.2 = 仓库最新代码 (2026-08-30 比对零差异)
+
+# 备选 (要改源码时): git clone https://github.com/txc-link/dsh-matrix-connector && dsh plugin --profile web add ./dsh-matrix-connector
 ```
 
 ### ③ 追加 connector profile patch（`~/.dsh/profiles/web/cordis.patch.yml` 末尾）

@@ -14,7 +14,7 @@
 
 ## 2. 两个插件是什么、为什么都要装
 
-| | **dsh-agora-plugin**（npm `dsh-agora-plugin@0.6.0`） | **dsh-matrix-connector**（GitHub develop） |
+| | **dsh-agora-plugin**（npm `dsh-agora-plugin@0.6.0`） | **dsh-matrix-connector**（npm `dsh-matrix-connector@0.1.2`；源码仓 GitHub develop） |
 |---|---|---|
 | 职责 | 节点**治理接入**：把 DSH 会话注册为 Agora runtime agent，接收任务派发（dispatch）、心跳/续租/进度/交付（delivery） | 节点**IM 对话**：bot 身份在 Matrix 房间收发消息，`/agora` slash 命令经 agora REST 转发，task 推送落房间 |
 | 连接对象 | agora server REST（:18008） | Synapse homeserver（:8008）+ agora REST（:18008） |
@@ -50,9 +50,10 @@
 # ① 治理接入插件（npm）
 dsh plugin --profile web add dsh-agora-plugin
 
-# ② IM 对话插件（GitHub）
-git clone https://github.com/txc-link/dsh-matrix-connector
-dsh plugin --profile web add ./dsh-matrix-connector
+# ② IM 对话插件（npm, 首选）
+dsh plugin --profile web add dsh-matrix-connector
+
+# 备选（要改源码时）: git clone + 本地路径安装
 ```
 
 两段 config（agora row + matrix-connector row）都追加到 `~/.dsh/profiles/web/cordis.patch.yml` → `dsh --profile web --dump-config | grep -E "agora|matrix-connector"` 双确认 → 重启 DSH。
