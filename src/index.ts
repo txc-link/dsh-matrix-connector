@@ -431,4 +431,11 @@ export {
 export { type ThreadBinding, ThreadRegistry, buildThreadKey } from './thread-registry.js';
 export { CitizenBridge, DispatchBridge, TaskBridge, ArtifactBridge, AttentionBridge } from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
-export { type VerbDecision, type VerbName, route, renderError, HELP_TEXT } from './message-router.js';
+export { type VerbDecision, type VerbName, route, renderError, HELP_TEXT } from './message-router.js';export { buildRoomName, ROOM_NAME_MAX_LENGTH, UNTITLED_FALLBACK } from './room-name.js';
+export { provisionTaskRoom } from './room-provisioner.js';
+export type {
+  RoomProvisionerClient,
+  RoomProvisionerAgora,
+  ProvisionTaskRoomOptions,
+  ProvisionTaskRoomResult,
+} from './room-provisioner.js';
