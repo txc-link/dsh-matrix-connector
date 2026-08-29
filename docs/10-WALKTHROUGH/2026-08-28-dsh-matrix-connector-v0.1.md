@@ -75,7 +75,7 @@ outside this plugin's verification scope.
 
 | File | Status |
 |---|---|
-| `package.json` | deps: matrix-js-sdk ^34.13.0, peerDeps: cordis + dsh-agora |
+| `package.json` | deps: matrix-js-sdk ^34.13.0, peerDeps: cordis + dsh-agora-plugin (optional) |
 | `dsh.plugin.json` | id `dsh-matrix-connector` |
 | `cordis.patch.yml` | row id `matrix-connector` + config defaults |
 | `tsconfig.json` + `tsconfig.build.json` | strict + ES2022 + node types |
@@ -148,6 +148,16 @@ The next iteration will add:
 * Real DSH plugin mounting via `cordis-define` so the cordis
   composition includes `matrix-connector` automatically (currently
   manual via `cordis.patch.yml` row).
+
+## Changelog
+
+### 0.1.2 (2026-08-29)
+
+* `peerDependencies`: `dsh-agora: ^0.6.0` → `dsh-agora-plugin: ^0.6.0` (optional).
+  The companion node-adapter plugin was published to npm as `dsh-agora-plugin@0.6.0`;
+  the bare `dsh-agora` name on npm belongs to AgoraIO-Community's RTC skill bundle,
+  so the peer pointer was renamed to the actual published package.
+  Runtime behavior unchanged — the peer is a documented companion, never imported.
 
 ## License
 
