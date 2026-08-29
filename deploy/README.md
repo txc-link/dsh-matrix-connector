@@ -82,18 +82,48 @@
 - **ERP 变量（AGORA_HOME_DIR 等）**：默认不设（用 `~/.agora`）。仅在 `/root`
   只读等受限环境才需要设，见 `01-deploy-core.sh` 注释。
 
-## 5. Win / Mac 手动装机附录（node-b / node-c）
+## 5. DSH 节点装机（Win / Mac node-b / node-c）
+
+> 先读 [`deploy/ECOSYSTEM-MAP.md`](./ECOSYSTEM-MAP.md)：两个仓库 × 两个插件的关系与数据流。**节点要装两个插件**——治理接入（dsh-agora-plugin, npm）+ IM 对话（本仓 connector）。下面两段都做。
 
 CORE 侧无法代装的机器，手动执行以下三步（Linux 03 脚本的等价翻译）。凭据值在 CORE 的 `deploy/node-b.env`（Win）/ `node-c.env`（Mac），agora api token 在 CORE `/root/.agora/api-token`。
 
-### ① 安装插件
+### ① 装治理接入插件 dsh-agora-plugin（npm, 先做）
+
+```bash
+dsh plugin --profile web add dsh-agora-plugin
+```
+
+追加 agora row 到 `~/.dsh/profiles/web/cordis.patch.yml`（`workspace` 写本机绝对路径; Win 例 `'C:/Users/me/workspace'`）:
+
+```yaml
+- id: agora
+  config:
+    serverUrl: 'http://8.136.15.147:18008'
+    apiToken: '<CORE /root/.agora/api-token 同值>'
+    nodeApiToken: '<CORE 签发的节点 worker token, .secrets/win-mac-onboarding.env>'
+    requestTimeoutMs: 10000
+    defaultCreator: 'dsh'
+    commandName: 'agora'
+    nodeEnabled: true
+    nodeId: 'node-b'          # Mac 换 node-c
+    maxConcurrent: 2
+    runtimeAgents:
+      - id: 'default'
+        displayName: 'Node B Agent'   # Mac 换 Node C Agent
+        workspace: '/path/to/workspace'
+        roles: ['general']
+        capabilities: ['research', 'coding']
+```
+
+### ② 装 IM 对话插件 dsh-matrix-connector（本仓）
 
 ```bash
 # Windows PowerShell / macOS 相同
 dsh plugin --profile web add <connector 源码路径>
 ```
 
-### ② 追加 profile patch（`~/.dsh/profiles/web/cordis.patch.yml` 末尾）
+### ③ 追加 connector profile patch（`~/.dsh/profiles/web/cordis.patch.yml` 末尾）
 
 ```yaml
 # ── dsh-matrix-connector (node: node-b) ─────────────────────────────
@@ -118,10 +148,10 @@ dsh plugin --profile web add <connector 源码路径>
         requestTimeoutMs: 10000
 ```
 
-### ③ 校验 + 重启 + 回报
+### ④ 校验 + 重启 + 回报
 
 ```bash
-dsh --profile web --dump-config | grep matrix-connector   # 有输出 = 配置进入
+dsh --profile web --dump-config | grep -E "agora|matrix-connector"   # 两个都有输出 = 配置进入
 dsh --profile web                                          # 重启生效
 ```
 
