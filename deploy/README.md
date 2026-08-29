@@ -108,6 +108,7 @@ dsh plugin --profile web add dsh-agora-plugin
 
 ```yaml
 - id: agora
+  name: 'dsh-agora-plugin'   # 必须与 npm 包名一致
   config:
     serverUrl: 'http://8.136.15.147:18008'
     apiToken: '<CORE /root/.agora/api-token 同值>'
@@ -129,7 +130,7 @@ dsh plugin --profile web add dsh-agora-plugin
 ### ② 装 IM 对话插件 dsh-matrix-connector（npm, 首选）
 
 ```bash
-dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.3 — 2026-08-30 修复: 补顶层 Cordis apply 导出 (npm 直装 loader 约定)
+dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.4 — 2026-08-30 修复: 补顶层 Cordis { apply, name, inject } 导出 + transport.connect() 启动收消息 + timeline 分流(/agora slash) + autoJoin 自动入房
 
 # 备选 (要改源码时): git clone https://github.com/txc-link/dsh-matrix-connector && dsh plugin --profile web add ./dsh-matrix-connector
 ```
@@ -165,6 +166,8 @@ dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.3 — 2026-08-30 �
 dsh --profile web --dump-config | grep -E "agora|matrix-connector"   # 两个都有输出 = 配置进入
 dsh --profile web                                          # 重启生效
 ```
+
+**真实收消息验证（重启后必做）**：在组织房间里发 `/agora help`，bot 回帮助文本 = connector 收发链路全通（0.1.4 起 transport 才真正 connect）。
 
 两台都装完后告诉 CORE 侧 agent「Win/Mac 已装」，agent 会跑三机 `04-verify.sh` 回归并 goal 收官。
 

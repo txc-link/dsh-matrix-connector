@@ -14,7 +14,7 @@
 
 ## 2. 两个插件是什么、为什么都要装
 
-| | **dsh-agora-plugin**（npm `dsh-agora-plugin@0.6.1`） | **dsh-matrix-connector**（npm `dsh-matrix-connector@0.1.3`；源码仓 GitHub develop） |
+| | **dsh-agora-plugin**（npm `dsh-agora-plugin@0.6.2`） | **dsh-matrix-connector**（npm `dsh-matrix-connector@0.1.4`；源码仓 GitHub develop） |
 |---|---|---|
 | 职责 | 节点**治理接入**：把 DSH 会话注册为 Agora runtime agent，接收任务派发（dispatch）、心跳/续租/进度/交付（delivery） | 节点**IM 对话**：bot 身份在 Matrix 房间收发消息，`/agora` slash 命令经 agora REST 转发，task 推送落房间 |
 | 连接对象 | agora server REST（:18008） | Synapse homeserver（:8008）+ agora REST（:18008） |
@@ -67,6 +67,6 @@ dsh plugin --profile web add dsh-matrix-connector
 
 ## 5. 版本口径（2026-08-30）
 
-- `dsh-agora-plugin@0.6.1`（npm）= 主仓 `extensions/dsh-agora` 最新代码（0.6.1: 修复示例 patch row name 旧名 bug）
-- connector: npm `dsh-matrix-connector@0.1.3`（2026-08-30 与仓库最新代码比对零差异）+ GitHub `develop`（装机文档）
-- node-a（CORE 本机）用 `link:` 本地开发版 dsh-agora，代码与 npm 0.6.1 零差异；生产节点统一用 npm 包
+- `dsh-agora-plugin@0.6.2`（npm）= 主仓 `extensions/dsh-agora` 最新代码（0.6.1: 示例 patch row name 旧名修复; 0.6.2: client bundle __ModuleLoader__.load id 旧名修复——npm 直装 client entry 失配 bug）
+- connector: npm `dsh-matrix-connector@0.1.4`（2026-08-30 与仓库最新代码比对零差异）+ GitHub `develop`（装机文档）
+- node-a（CORE 本机）用 `link:` 本地开发版 dsh-agora，代码与 npm 0.6.2 零差异；生产节点统一用 npm 包
