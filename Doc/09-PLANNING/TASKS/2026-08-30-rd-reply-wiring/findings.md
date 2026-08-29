@@ -65,3 +65,33 @@ timeline。宿主未来若提供真实 timeline 事件，onTimelineEvent 可废�
 
 - ❌ 真实 homeserver smoke：沙箱无法访问 agent-hub.local:8008，留 dev machine
 - ✅ isOwn：transport 层填（sender === opts.userId），wiring 保留 filter
+## 6. E2E smoke (2026-08-30, REAL homeserver + REAL agora-ts server)
+
+本机 Docker Synapse (localhost:8008) + 本机 agora-ts server (18080+) 全链路跑通：
+
+```
+matrix reply (m.relates_to.m.in_reply_to)
+  → ingestMatrixReply
+  → POST /api/tasks/:id/conversation/reply
+  → InboxReplyService.recordInboundReply
+  → task_conversation_entries
+```
+
+✅ PASS — provider=matrix, direction=inbound, parent_message_ref=真实 event id,
+thread_task_binding_id=auto-bound opaque key, body=中文回复
+
+### 发现并修复 2 个真实缺口（agora-ts master 60b01a6）
+
+1. **createAppFromRuntime 漏传 inboxReplyService** → reply route 一直 503。
+   `apps/server/src/index.ts` 补 `inboxReplyService: runtime.inboxReplyService`。
+2. **首条 reply 时 threadKey 未绑定** → FK constraint failed。
+   `InboxReplyService` 现在在 threadTaskBindingKey 给定且未绑定时自动 bind
+   （ThreadTaskBindingService，Core 服务组合，§1 合法）。
+
+### 环境要点（沙箱内可复现）
+
+- Synapse: `docker exec matrix-synapse`, token 从 postgres access_tokens 表取
+  (`docker exec matrix-pg psql -U synapse -d synapse`)
+- agora-ts server 起法（AGORA_HOME_DIR + AGORA_SKILL_TARGET_DIRS +
+  AGORA_BRAIN_PACK_ROOT + AGORA_CONFIG_PATH 全部重定向到工作区避免 EROFS）
+- E2E 脚本: `scripts/smoke-reply-e2e.mjs` (env: AGORA_URL/MATRIX_URL/MATRIX_TOKEN/MATRIX_USER)
