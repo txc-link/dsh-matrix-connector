@@ -439,3 +439,4 @@ export type {
   ProvisionTaskRoomOptions,
   ProvisionTaskRoomResult,
 } from './room-provisioner.js';
+export { ingestMatrixReply, type MatrixReplyEvent, type IngestMatrixReplyOptions } from './reply-ingest.js';
