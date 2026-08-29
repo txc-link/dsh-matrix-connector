@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 03-install-dsh-plugin.sh — 在【一台 DSH 节点】上安装并配置两个插件:
 #   ① dsh-agora-plugin   (npm) — 治理接入: 任务派发/心跳/交付 (连接 agora-ts)
-#   ② dsh-matrix-connector (npm 0.1.2) — IM 对话 bot (连接 Matrix homeserver + agora-ts)
+#   ② dsh-matrix-connector (npm 0.1.3) — IM 对话 bot (连接 Matrix homeserver + agora-ts)
 #
 # 用法（每台 DSH 执行一次, 参数不同）:
 #   ./03-install-dsh-plugin.sh \
@@ -109,6 +109,7 @@ if [[ "$SKIP_GOVERNANCE" != "1" ]] && ! grep -q "^- id: agora$" "$PATCH_FILE" 2>
 # ── dsh-agora-plugin (node: $NODE_ID) ─────────────────────────────────
 # 由 deploy/03-install-dsh-plugin.sh 自动生成; 改配置后重启 dsh 生效。
 - id: agora
+  name: 'dsh-agora-plugin'
   config:
     serverUrl: '$AGORA_URL'
     apiToken: '$AGORA_TOKEN'

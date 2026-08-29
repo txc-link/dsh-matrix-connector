@@ -24,6 +24,7 @@ import {
   TaskBridge,
 } from './bridges.js';
 import { MatrixClient } from './matrix-client.js';
+import { createBotTransport } from './transport/index.js';
 import { MatrixJsSdkSpaceTransport } from './transport/space-transport.js';
 import { MatrixSpaceAdapter, type SpaceEvent } from './space-adapter.js';
 import { HELP_TEXT, renderError, route } from './message-router.js';
@@ -537,3 +538,36 @@ export type {
   ProvisionTaskRoomResult,
 } from './room-provisioner.js';
 export { ingestMatrixReply, type MatrixReplyEvent, type IngestMatrixReplyOptions } from './reply-ingest.js';
+
+// ── Cordis 顶层入口 ─────────────────────────────────────────────────────
+// npm 直装时 loader 约定: 模块顶层必须导出 { apply, name, inject }。
+// 工厂 createMatrixConnectorPlugin() 保留给测试与编程式组装；这里负责
+// 从 profile row 的扁平 config 构建 transport/client 并接线。
+export const name = 'dsh-matrix-connector';
+export const inject: string[] = [];
+
+export function apply(ctx: CordisContext, config?: Partial<MatrixConnectorConfig>): Promise<void> {
+  const input = (config ?? {}) as Partial<MatrixConnectorConfig>;
+  const required = ['homeserverUrl', 'userId', 'accessToken', 'deviceId', 'agoraServerUrl', 'agoraApiToken'] as const;
+  for (const field of required) {
+    if (!input[field]) throw new Error(`dsh-matrix-connector: missing required config field '${field}' (check the matrix-connector row in cordis.patch.yml)`);
+  }
+  const resolved = buildConfig(input as MatrixConnectorConfig);
+  const matrix = new MatrixClient(createBotTransport({
+    homeserverUrl: resolved.homeserverUrl,
+    userId: resolved.userId,
+    accessToken: resolved.accessToken,
+    deviceId: resolved.deviceId,
+  }));
+  const agora = new AgoraRestClient({
+    baseUrl: resolved.agoraServerUrl,
+    apiToken: resolved.agoraApiToken,
+  });
+  const plugin = createMatrixConnectorPlugin({
+    config: resolved,
+    matrixClient: matrix,
+    agora,
+    context: ctx,
+  });
+  return Promise.resolve(plugin.apply(ctx));
+}

@@ -129,7 +129,7 @@ dsh plugin --profile web add dsh-agora-plugin
 ### ② 装 IM 对话插件 dsh-matrix-connector（npm, 首选）
 
 ```bash
-dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.2 = 仓库最新代码 (2026-08-30 比对零差异)
+dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.3 — 2026-08-30 修复: 补顶层 Cordis apply 导出 (npm 直装 loader 约定)
 
 # 备选 (要改源码时): git clone https://github.com/txc-link/dsh-matrix-connector && dsh plugin --profile web add ./dsh-matrix-connector
 ```
