@@ -338,25 +338,38 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       // POST /api/tasks/:id/conversation/reply. §1: matrix protocol
       // parsing stays here (adapter side); agora Core only sees opaque
       // provider_message_ref / parent_message_ref / thread_task_binding_key.
+      // v0.1.4 — timeline 分流: 回帖走 reply ingest, 普通消息走 /agora
+      // slash 路由 (handleRoomMessage)。此前 handleRoomMessage 只能由
+      // 'matrix.room.message' 事件触发, 而无人 emit 该事件, slash 死路。
       matrix.onTimelineEvent((evt: MatrixTimelineEvent) => {
         if (evt.type !== 'm.room.message') return;
         if (evt.isOwn) return;
-        void ingestMatrixReply({
-          agora,
-          threadKeyOf: (roomId) => registry.threadKeyFor(roomId),
-          taskIdOf: (threadKey) => registry.get(threadKey)?.taskId ?? undefined,
-          event: {
-            roomId: evt.roomId,
-            eventId: evt.eventId,
-            sender: evt.sender,
-            body: evt.body ?? '',
-            ...(evt.relatesTo ? { relatesTo: evt.relatesTo } : {}),
-          },
-          occurredAt: evt.originServerTs
-            ? new Date(evt.originServerTs).toISOString()
-            : new Date().toISOString(),
+        if (evt.relatesTo?.inReplyTo?.eventId) {
+          void ingestMatrixReply({
+            agora,
+            threadKeyOf: (roomId) => registry.threadKeyFor(roomId),
+            taskIdOf: (threadKey) => registry.get(threadKey)?.taskId ?? undefined,
+            event: {
+              roomId: evt.roomId,
+              eventId: evt.eventId,
+              sender: evt.sender,
+              body: evt.body ?? '',
+              ...(evt.relatesTo ? { relatesTo: evt.relatesTo } : {}),
+            },
+            occurredAt: evt.originServerTs
+              ? new Date(evt.originServerTs).toISOString()
+              : new Date().toISOString(),
+          }).catch((err: unknown) => {
+            ctx.logger('reply ingest failed:', err);
+          });
+          return;
+        }
+        void handleRoomMessage({
+          roomId: evt.roomId,
+          senderMxid: evt.sender,
+          body: evt.body ?? '',
         }).catch((err: unknown) => {
-          ctx.logger('reply ingest failed:', err);
+          ctx.logger('slash command failed:', err);
         });
       });
 
@@ -546,19 +559,33 @@ export { ingestMatrixReply, type MatrixReplyEvent, type IngestMatrixReplyOptions
 export const name = 'dsh-matrix-connector';
 export const inject: string[] = [];
 
-export function apply(ctx: CordisContext, config?: Partial<MatrixConnectorConfig>): Promise<void> {
+export async function apply(ctx: CordisContext, config?: Partial<MatrixConnectorConfig>): Promise<void> {
   const input = (config ?? {}) as Partial<MatrixConnectorConfig>;
   const required = ['homeserverUrl', 'userId', 'accessToken', 'deviceId', 'agoraServerUrl', 'agoraApiToken'] as const;
   for (const field of required) {
     if (!input[field]) throw new Error(`dsh-matrix-connector: missing required config field '${field}' (check the matrix-connector row in cordis.patch.yml)`);
   }
   const resolved = buildConfig(input as MatrixConnectorConfig);
-  const matrix = new MatrixClient(createBotTransport({
+  const transport = createBotTransport({
     homeserverUrl: resolved.homeserverUrl,
     userId: resolved.userId,
     accessToken: resolved.accessToken,
     deviceId: resolved.deviceId,
-  }));
+  });
+  const matrix = new MatrixClient(transport);
+  // v0.1.4 — autoJoin: accept pending room invites (register before
+  // connect so invites delivered by the initial sync are handled).
+  if (resolved.autoJoin) {
+    matrix.onRoomInvite((roomId: string) => {
+      void matrix.joinRoom(roomId).catch((err: unknown) => {
+        ctx.logger('autoJoin failed for room:', roomId, err);
+      });
+    });
+  }
+  // v0.1.4 — the bot cannot receive anything until the transport starts
+  // its /sync loop. Previously the connector built the transport and
+  // never called connect(): all timeline wiring was dead code.
+  await transport.connect();
   const agora = new AgoraRestClient({
     baseUrl: resolved.agoraServerUrl,
     apiToken: resolved.agoraApiToken,
@@ -569,5 +596,10 @@ export function apply(ctx: CordisContext, config?: Partial<MatrixConnectorConfig
     agora,
     context: ctx,
   });
-  return Promise.resolve(plugin.apply(ctx));
+  await plugin.apply(ctx);
+  ctx.effect(() => {
+    void transport.stopSync().catch((err: unknown) => {
+      ctx.logger('matrix transport stopSync failed:', err);
+    });
+  });
 }

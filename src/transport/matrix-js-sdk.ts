@@ -76,6 +76,7 @@ export class MatrixJsSdkTransport implements MatrixTransport {
     }
     this.sdk = sdk;
     this.connected = true;
+    this.attachInviteListener();
   }
 
   public isConnected(): boolean {
@@ -128,6 +129,35 @@ export class MatrixJsSdkTransport implements MatrixTransport {
     await this.sdk.stopClient();
     this.sdk = null;
     this.connected = false;
+  }
+
+  /**
+   * v0.1.4 — autoJoin surface. `connect()` may not have run yet when a
+   * handler is registered, so invite handlers are buffered and attached
+   * as soon as the SDK client exists.
+   */
+  private inviteHandlers: Array<(roomId: string) => void> = [];
+
+  public onRoomInvite(handler: (roomId: string) => void): void {
+    this.inviteHandlers.push(handler);
+    if (this.sdk) this.attachInviteListener();
+  }
+
+  private inviteListenerAttached = false;
+
+  private attachInviteListener(): void {
+    if (!this.sdk || this.inviteListenerAttached) return;
+    this.inviteListenerAttached = true;
+    this.sdk.on('Room.myMembership' as never, ((room: Room, membership: string) => {
+      if (membership === 'invite') {
+        for (const handler of this.inviteHandlers) handler(room.roomId);
+      }
+    }) as never);
+  }
+
+  public async joinRoom(roomId: string): Promise<void> {
+    if (!this.sdk) throw new Error('matrix transport not connected');
+    await this.sdk.joinRoom(roomId);
   }
 
   /**

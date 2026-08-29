@@ -48,6 +48,10 @@ export interface MatrixTransport {
   // with m.relates_to). The handler receives the raw event payload;
   // matrix protocol parsing lives in the adapter, never in agora Core.
   onTimelineEvent?(handler: (event: MatrixTimelineEvent) => void): void;
+  // v0.1.4 — autoJoin surface: accept pending room invites. Optional so
+  // legacy stub transports stay source-compatible.
+  joinRoom?(roomId: string): Promise<void>;
+  onRoomInvite?(handler: (roomId: string) => void): void;
 }
 
 /**
@@ -130,6 +134,19 @@ export class MatrixClient {
   onTimelineEvent(handler: (event: MatrixTimelineEvent) => void): void {
     if (typeof this.transport.onTimelineEvent !== 'function') return;
     this.transport.onTimelineEvent(handler);
+  }
+
+  // v0.1.4 — autoJoin surface, forwarded to the transport when present.
+  async joinRoom(roomId: string): Promise<void> {
+    if (typeof this.transport.joinRoom !== 'function') {
+      throw new Error('transport does not support joinRoom');
+    }
+    await this.transport.joinRoom(roomId);
+  }
+
+  onRoomInvite(handler: (roomId: string) => void): void {
+    if (typeof this.transport.onRoomInvite !== 'function') return;
+    this.transport.onRoomInvite(handler);
   }
 
   startSync(): void {
