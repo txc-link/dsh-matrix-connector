@@ -38,6 +38,10 @@ export interface MatrixJsSdkTransportOptions {
   readonly deviceId?: string;
 }
 
+export interface MatrixJsSdkTransportInternals {
+  readonly createClient?: typeof createClient;
+}
+
 export interface CreateRoomOptions {
   readonly name?: string;
   readonly topic?: string;
@@ -52,24 +56,32 @@ export interface CreateRoomReceipt {
 export class MatrixJsSdkTransport implements MatrixTransport {
   private sdk: SdkMatrixClient | null = null;
   private connected = false;
+  private readonly createSdkClient: typeof createClient;
 
-  public constructor(private readonly opts: MatrixJsSdkTransportOptions) {}
+  public constructor(
+    private readonly opts: MatrixJsSdkTransportOptions,
+    internals: MatrixJsSdkTransportInternals = {},
+  ) {
+    this.createSdkClient = internals.createClient ?? createClient;
+  }
 
   public async connect(): Promise<void> {
     if (this.connected) return;
-    const sdk = createClient({
+    const sdk = this.createSdkClient({
       baseUrl: this.opts.homeserverUrl,
       accessToken: this.opts.accessToken,
       userId: this.opts.userId,
       ...(this.opts.deviceId !== undefined ? { deviceId: this.opts.deviceId } : {}),
     });
     await sdk.startClient({ initialSyncLimit: 0 });
-    // E2EE is off-by-default per turn 118. Try crypto init; swallow failure
-    // so unencrypted-room transports still work. T-7 will revisit.
-    const maybeInitCrypto = (sdk as unknown as { initRustCrypto?: () => Promise<void> }).initRustCrypto;
+    // Node has no browser IndexedDB. Keep the optional Rust crypto backend
+    // in memory so initialization cannot abort the entire DSH host.
+    const maybeInitCrypto = (sdk as unknown as {
+      initRustCrypto?: (args?: { useIndexedDB?: boolean }) => Promise<void>;
+    }).initRustCrypto;
     if (typeof maybeInitCrypto === 'function') {
       try {
-        await maybeInitCrypto.call(sdk);
+        await maybeInitCrypto.call(sdk, { useIndexedDB: false });
       } catch {
         // intentional no-op — unencrypted rooms don't need crypto
       }

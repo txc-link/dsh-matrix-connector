@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 03-install-dsh-plugin.sh — 在【一台 DSH 节点】上安装并配置两个插件:
 #   ① dsh-agora-plugin   (npm) — 治理接入: 任务派发/心跳/交付 (连接 agora-ts)
-#   ② dsh-matrix-connector (npm 0.1.4) — IM 对话 bot (连接 Matrix homeserver + agora-ts)
+#   ② dsh-matrix-connector (npm 0.1.5) — IM 对话 bot (连接 Matrix homeserver + agora-ts)
 #
 # 用法（每台 DSH 执行一次, 参数不同）:
 #   ./03-install-dsh-plugin.sh \
