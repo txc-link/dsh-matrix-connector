@@ -122,9 +122,39 @@ tests/
   matrix-client.test.mjs matrix-client unit tests (5)
   thread-registry.test.mjs  thread registry tests (6)
   plugin-flow.test.mjs   full Cordis plugin apply() flow tests (6)
+  reply-wiring.test.mjs  Matrix timeline → ingestMatrixReply wiring tests (3)
   smoke-matrix.mjs       end-to-end smoke; requires env vars + real Synapse + real agora central
 scripts/
   provision-bot.sh       provision a new bot user on Synapse via admin API
+deploy/
+  01-deploy-core.sh      deploy agora-ts server on the core machine (build + token + nohup)
+  02-provision-bots.sh   bulk-provision N Synapse bot accounts (node-a.env …)
+  03-install-dsh-plugin.sh  per-DSH install: dsh plugin add + cordis.patch.yml row
+  04-verify.sh           end-to-end verification (Synapse / agora / token / room round trip)
+```
+
+## Deployment (multi-machine, multi-DSH)
+
+Full guide: [`deploy/README.md`](deploy/README.md). Quick start:
+
+```sh
+# core machine (once): deploy agora-ts server, generate API token
+./deploy/01-deploy-core.sh --core-ip <CORE_IP>
+
+# provision N bot accounts on Synapse (once)
+./deploy/02-provision-bots.sh --homeserver http://<CORE_IP>:8008 \
+    --admin-token '<root_admin_token>' --nodes 5
+
+# every DSH node (once per node)
+./deploy/03-install-dsh-plugin.sh --profile web \
+    --homeserver http://<CORE_IP>:8008 \
+    --agora-url http://<CORE_IP>:18008 --agora-token '<api_token>' \
+    --node-id node-a --env-file node-a.env \
+    --connector-src /path/to/dsh-matrix-connector
+
+# verify anywhere
+./deploy/04-verify.sh --homeserver http://<CORE_IP>:8008 \
+    --agora http://<CORE_IP>:18008 --admin-token '<root_admin_token>'
 ```
 
 ## Running tests
