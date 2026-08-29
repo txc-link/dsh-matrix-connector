@@ -38,6 +38,17 @@ export interface MatrixConnectorConfig {
   autoJoin?: boolean;
   /** Event polling interval for the agora central /api/events stream (ms). */
   eventPollIntervalMs?: number;
+  /**
+   * v0.6 — R-E Space nesting opt-in. When enabled, the connector treats
+   * `rootSpaces` as matrix Spaces and aggregates their child timelines onto
+   * the same inbound event stream. Defaults to disabled (preserves v0.5
+   * behaviour; opt-in per deployment).
+   */
+  spaces?: {
+    enabled: boolean;
+    /** Root Space room ids whose child timelines should be aggregated. */
+    rootSpaces?: string[];
+  };
 }
 
 export const DEFAULT_EVENT_POLL_INTERVAL_MS = 5_000;
@@ -49,6 +60,7 @@ export type ProjectId = string;
 
 export function buildConfig(input: MatrixConnectorConfig): Required<Omit<MatrixConnectorConfig,
   | 'nodeId'
+  | 'spaces'
 >> & { nodeId: string } {
   return {
     homeserverUrl: input.homeserverUrl,
