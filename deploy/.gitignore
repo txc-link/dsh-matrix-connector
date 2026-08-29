@@ -1,0 +1,5 @@
+# 部署运行时产物 — 含真实 token, 禁止入库
+runtime/
+node-*.env
+*.pid
+*.log
