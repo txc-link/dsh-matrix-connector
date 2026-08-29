@@ -79,3 +79,48 @@ test('matrix-client: startSync / stopSync delegate to transport', async () => {
   assert.equal(calls.startSync, 1);
   assert.equal(calls.stopSync, 1);
 });
+
+// ─── v0.4.0 — createRoom wrapper ────────────────────────────────────────────
+
+test('matrix-client: createRoom delegates to transport.createRoom', async () => {
+  const createCalls = [];
+  const transport = {
+    ...makeTransport().transport,
+    createRoom: async (opts) => {
+      createCalls.push(opts);
+      return { roomId: '!r_abc:agent-hub.local' };
+    },
+  };
+  const client = new MatrixClient(transport);
+  const out = await client.createRoom({ name: 'agora-smoke', topic: 'T-1', visibility: 'private', preset: 'private_chat' });
+  assert.equal(out.roomId, '!r_abc:agent-hub.local');
+  assert.equal(createCalls.length, 1);
+  assert.equal(createCalls[0].name, 'agora-smoke');
+  assert.equal(createCalls[0].topic, 'T-1');
+  assert.equal(createCalls[0].visibility, 'private');
+  assert.equal(createCalls[0].preset, 'private_chat');
+});
+
+test('matrix-client: createRoom without optional fields omits them from transport call', async () => {
+  const createCalls = [];
+  const transport = {
+    ...makeTransport().transport,
+    createRoom: async (opts) => {
+      createCalls.push(opts);
+      return { roomId: '!r_min:agent-hub.local' };
+    },
+  };
+  const client = new MatrixClient(transport);
+  const out = await client.createRoom({ name: 'minimal' });
+  assert.equal(out.roomId, '!r_min:agent-hub.local');
+  assert.deepEqual(createCalls[0], { name: 'minimal' });
+});
+
+test('matrix-client: createRoom throws clear error when transport lacks createRoom', async () => {
+  const transport = makeTransport().transport; // no createRoom
+  const client = new MatrixClient(transport);
+  await assert.rejects(
+    () => client.createRoom({ name: 'x' }),
+    /transport does not implement createRoom/,
+  );
+});
