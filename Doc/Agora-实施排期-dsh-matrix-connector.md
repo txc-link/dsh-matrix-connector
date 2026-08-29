@@ -169,7 +169,7 @@ R-E = connector 侧 Space 适配，让 matrix Space（聚合多房间的话题�
 | Slice | Status | Notes |
 |---|---|---|
 | **R-E.1 SDK Space API 验证 + adapter 设计 + TDD 失败测试** | ✅ **done (turn 143)** | contract 14 cases + 190/190 green; walkthrough `Doc/10-WALKTHROUGH/2026-08-30-r-e-space-nesting-v01.md` |
-| R-E.2 Space 实装 + 真实 Synapse Space 冒烟 | ⏳ in_progress (subagent 启动中) | 同 task_dir |
+| **R-E.2 Space 实装 + 真实 Synapse Space 冒烟** | ✅ **done (turn 145)** | MatrixJsSdkSpaceTransport SDK 实装 + smoke 6/6 pass + cordis 注入; walkthrough `Doc/10-WALKTHROUGH/2026-08-30-r-e-space-nesting-v02.md` |
 
 ### 9.4 Worktree
 
