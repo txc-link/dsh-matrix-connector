@@ -130,6 +130,18 @@ export class MatrixJsSdkTransport implements MatrixTransport {
     this.connected = false;
   }
 
+  /**
+   * v0.6 — R-E.2: expose the underlying `SdkMatrixClient` so secondary
+   * transports (e.g. `MatrixJsSdkSpaceTransport`) can share the same
+   * /sync loop and Room cache. Returns null when not connected.
+   *
+   * Callers MUST NOT mutate the SDK lifecycle (start/stop); that stays
+   * owned by `MatrixJsSdkTransport` itself.
+   */
+  public getSdk(): SdkMatrixClient | null {
+    return this.sdk;
+  }
+
   public async createRoom(options: CreateRoomOptions): Promise<CreateRoomReceipt> {
     this.requireConnected();
     const resp = await this.sdk!.createRoom({
