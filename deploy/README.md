@@ -130,7 +130,7 @@ dsh plugin --profile web add dsh-agora-plugin
 ### ② 装 IM 对话插件 dsh-matrix-connector（npm, 首选）
 
 ```bash
-dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.5 — 2026-08-30 修复: transport.connect() + timeline 分流 + autoJoin，并在 Node 使用内存 Crypto store
+dsh plugin --profile web add dsh-matrix-connector   # npm 0.1.7 — 2026-08-30 修复: transport.connect() + timeline 分流 + autoJoin、Node Crypto 初始化及 sync 生命周期
 
 # 备选 (要改源码时): git clone https://github.com/txc-link/dsh-matrix-connector && dsh plugin --profile web add ./dsh-matrix-connector
 ```

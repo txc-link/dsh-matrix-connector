@@ -73,9 +73,9 @@ export class MatrixJsSdkTransport implements MatrixTransport {
       userId: this.opts.userId,
       ...(this.opts.deviceId !== undefined ? { deviceId: this.opts.deviceId } : {}),
     });
-    await sdk.startClient({ initialSyncLimit: 0 });
-    // Node has no browser IndexedDB. Keep the optional Rust crypto backend
-    // in memory so initialization cannot abort the entire DSH host.
+    // Crypto must be initialized before startClient(): the sync loop can
+    // otherwise race Rust crypto startup and crash inside backup handling.
+    // Node has no browser IndexedDB, so keep the optional backend in memory.
     const maybeInitCrypto = (sdk as unknown as {
       initRustCrypto?: (args?: { useIndexedDB?: boolean }) => Promise<void>;
     }).initRustCrypto;
@@ -86,6 +86,7 @@ export class MatrixJsSdkTransport implements MatrixTransport {
         // intentional no-op — unencrypted rooms don't need crypto
       }
     }
+    await sdk.startClient({ initialSyncLimit: 0 });
     this.sdk = sdk;
     this.connected = true;
     this.attachInviteListener();

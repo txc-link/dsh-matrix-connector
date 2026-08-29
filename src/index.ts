@@ -597,9 +597,7 @@ export async function apply(ctx: CordisContext, config?: Partial<MatrixConnector
     context: ctx,
   });
   await plugin.apply(ctx);
-  ctx.effect(() => {
-    void transport.stopSync().catch((err: unknown) => {
-      ctx.logger('matrix transport stopSync failed:', err);
-    });
-  });
+  // createMatrixConnectorPlugin owns the transport lifecycle. Its effect
+  // starts sync and returns the stopSync cleanup; registering another effect
+  // here would execute stopSync immediately during plugin initialization.
 }

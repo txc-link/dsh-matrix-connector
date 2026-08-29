@@ -11,11 +11,11 @@ import assert from 'node:assert/strict';
 
 import { MatrixJsSdkTransport } from '../lib/transport/matrix-js-sdk.js';
 
-test('matrix-js-sdk-transport: connect uses in-memory Rust crypto in Node', async () => {
-  const calls = { start: [], crypto: [], stop: 0, listeners: [] };
+test('matrix-js-sdk-transport: connect initializes in-memory Rust crypto before sync', async () => {
+  const calls = { start: [], crypto: [], stop: 0, listeners: [], order: [] };
   const sdk = {
-    startClient: async (options) => { calls.start.push(options); },
-    initRustCrypto: async (options) => { calls.crypto.push(options); },
+    startClient: async (options) => { calls.start.push(options); calls.order.push('start'); },
+    initRustCrypto: async (options) => { calls.crypto.push(options); calls.order.push('crypto'); },
     stopClient: async () => { calls.stop += 1; },
     on: (event) => { calls.listeners.push(event); },
   };
@@ -34,6 +34,7 @@ test('matrix-js-sdk-transport: connect uses in-memory Rust crypto in Node', asyn
   assert.equal(transport.isConnected(), true);
   assert.deepEqual(calls.start, [{ initialSyncLimit: 0 }]);
   assert.deepEqual(calls.crypto, [{ useIndexedDB: false }]);
+  assert.deepEqual(calls.order, ['crypto', 'start']);
   assert.ok(calls.listeners.includes('Room.myMembership'));
 
   await transport.stopSync();

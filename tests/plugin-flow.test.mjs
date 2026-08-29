@@ -189,11 +189,16 @@ test('plugin: apply wires matrix; /agora dispatch creates a quick task and posts
   assert.equal(ctx.effects.length, 1);
   ctx.runEffects();
   assert.equal(matrix.started, true);
+  assert.equal(matrix.stopped, false);
 
   emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: '/agora dispatch ask REMOTE_OK' });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(matrix.sent.length, 1);
   assert.match(matrix.sent[0].body, /task_id=task_1/);
+
+  ctx.cleanup();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(matrix.stopped, true);
 });
 
 test('plugin: agora.events.tick auto-edits the placeholder to running → completed', async (t) => {
