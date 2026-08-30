@@ -35,3 +35,6 @@ SAPI voice name is adapter configuration.
 - Remote: Agora health ok; Synapse Matrix v1.12 reachable.
 - Deployment pending: remote Core routes are 404 and Synapse registration is
   disabled; admin provisioning is required before protected Spaces are created.
+- Restart regression: v0.2.0 exposed duplicate one-time-key uploads from the
+  memory-only Rust crypto store. v0.2.1 disables that unsafe initialization;
+  encrypted protected rooms stay blocked until a durable store is available.

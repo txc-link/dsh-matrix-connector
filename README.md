@@ -68,6 +68,10 @@ All v0.1 verbs are wired through:
   live Core has not deployed the v0.2 relationship/governance routes yet.
 * ⚠️ Public Matrix registration is disabled; protected domains require
   dedicated bot identities provisioned through the Synapse admin API.
+* ⚠️ E2EE is intentionally disabled in v0.2.1: matrix-js-sdk@34 on this Node
+  runtime only offered an in-memory Rust store, which regenerated conflicting
+  one-time keys on restart. Health/sensitive-personal rooms remain deployment-
+  blocked until a durable crypto store and key recovery are verified.
 
 ## Architectural Boundary
 

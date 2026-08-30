@@ -16,9 +16,11 @@
  * Pure mapper methods (buildSendContent, buildEditContent, toSendReceipt,
  * toCreateRoomReceipt) are exposed for unit tests without I/O.
  *
- * v0.4.0 does NOT add E2EE (T-7). initRustCrypto() is called but failure is
- * non-fatal — the transport still works for unencrypted rooms, which is
- * the default per turn 118 E2EE decision (disabled by default).
+ * E2EE is deliberately disabled in the Node transport. matrix-js-sdk@34's
+ * Rust store is IndexedDB or memory-only; the latter re-creates device keys
+ * after every process restart and is unsafe for a stable device id. Protected
+ * deployments must not enable encrypted rooms until a durable crypto store is
+ * implemented and recovery-tested.
  */
 
 import { createClient, type MatrixClient as SdkMatrixClient, type Visibility, type Preset, type Room, type MatrixEvent } from 'matrix-js-sdk';
@@ -73,19 +75,9 @@ export class MatrixJsSdkTransport implements MatrixTransport {
       userId: this.opts.userId,
       ...(this.opts.deviceId !== undefined ? { deviceId: this.opts.deviceId } : {}),
     });
-    // Crypto must be initialized before startClient(): the sync loop can
-    // otherwise race Rust crypto startup and crash inside backup handling.
-    // Node has no browser IndexedDB, so keep the optional backend in memory.
-    const maybeInitCrypto = (sdk as unknown as {
-      initRustCrypto?: (args?: { useIndexedDB?: boolean }) => Promise<void>;
-    }).initRustCrypto;
-    if (typeof maybeInitCrypto === 'function') {
-      try {
-        await maybeInitCrypto.call(sdk, { useIndexedDB: false });
-      } catch {
-        // intentional no-op — unencrypted rooms don't need crypto
-      }
-    }
+    // Do not initialize Rust crypto with an in-memory store. Doing so under a
+    // stable device id generates fresh one-time keys after restart, which the
+    // homeserver correctly rejects as conflicting device state.
     await sdk.startClient({ initialSyncLimit: 0 });
     this.sdk = sdk;
     this.connected = true;

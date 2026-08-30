@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 
 import { MatrixJsSdkTransport } from '../lib/transport/matrix-js-sdk.js';
 
-test('matrix-js-sdk-transport: connect initializes in-memory Rust crypto before sync', async () => {
+test('matrix-js-sdk-transport: default Node transport leaves E2EE disabled and starts sync', async () => {
   const calls = { start: [], crypto: [], stop: 0, listeners: [], order: [] };
   const sdk = {
     startClient: async (options) => { calls.start.push(options); calls.order.push('start'); },
@@ -33,8 +33,8 @@ test('matrix-js-sdk-transport: connect initializes in-memory Rust crypto before 
 
   assert.equal(transport.isConnected(), true);
   assert.deepEqual(calls.start, [{ initialSyncLimit: 0 }]);
-  assert.deepEqual(calls.crypto, [{ useIndexedDB: false }]);
-  assert.deepEqual(calls.order, ['crypto', 'start']);
+  assert.deepEqual(calls.crypto, []);
+  assert.deepEqual(calls.order, ['start']);
   assert.ok(calls.listeners.includes('Room.myMembership'));
 
   await transport.stopSync();
