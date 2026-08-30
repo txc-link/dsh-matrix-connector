@@ -54,6 +54,40 @@ test('route: /agora dispatch empty → MISSING_ARG', () => {
   assert.equal(d.verb, 'dispatch');
 });
 
+test('route: /agora task pause <id> [reason] → task / pause', () => {
+  const d = route('/agora task pause t-1 waiting for approval');
+  assert.equal(d.verb, 'task');
+  assert.equal(d.subVerb, 'pause');
+  assert.deepEqual(d.args, ['t-1', 'waiting', 'for', 'approval']);
+});
+
+test('route: /agora task resume <id> → task / resume', () => {
+  const d = route('/agora task resume t-1');
+  assert.equal(d.verb, 'task');
+  assert.equal(d.subVerb, 'resume');
+  assert.deepEqual(d.args, ['t-1']);
+});
+
+test('route: /agora task cancel <id> → task / cancel; missing id → MISSING_ARG', () => {
+  const ok = route('/agora task cancel t-1 outdated');
+  assert.equal(ok.subVerb, 'cancel');
+  assert.deepEqual(ok.args, ['t-1', 'outdated']);
+  const missing = route('/agora task cancel');
+  assert.equal(missing.errorCode, 'MISSING_ARG');
+});
+
+test('route: /agora task unblock <id> → task / unblock; legacy <id> stays show', () => {
+  const d = route('/agora task unblock t-1 retry');
+  assert.equal(d.subVerb, 'unblock');
+  assert.deepEqual(d.args, ['t-1', 'retry']);
+  const legacy = route('/agora task t-1 artifacts');
+  assert.equal(legacy.subVerb, undefined);
+  assert.deepEqual(legacy.args, ['t-1', 'artifacts']);
+  const show = route('/agora task show t-1');
+  assert.equal(show.subVerb, 'show');
+  assert.deepEqual(show.args, ['t-1']);
+});
+
 test('route: /agora brain search <query> → brain / search / <query>', () => {
   const d = route('/agora brain search dispatch 协议');
   assert.equal(d.verb, 'brain');

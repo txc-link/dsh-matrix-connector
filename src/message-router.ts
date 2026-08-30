@@ -91,6 +91,16 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
       if (tail.length === 0) {
         return { verb: 'task', args: [], errorCode: 'MISSING_ARG' };
       }
+      const sub = tail[0]!;
+      if (sub === 'show') {
+        if (tail.length < 2) return { verb: 'task', args: [], subVerb: 'show', errorCode: 'MISSING_ARG' };
+        return { verb: 'task', args: tail.slice(1), subVerb: 'show' };
+      }
+      if (sub === 'pause' || sub === 'resume' || sub === 'cancel' || sub === 'unblock') {
+        if (tail.length < 2) return { verb: 'task', args: [], subVerb: sub, errorCode: 'MISSING_ARG' };
+        return { verb: 'task', args: tail.slice(1), subVerb: sub };
+      }
+      // Backward compatible: `/agora task <id> [artifacts]` shows a task.
       return { verb: 'task', args: tail };
     }
     case 'artifact': {
@@ -177,6 +187,11 @@ export const HELP_TEXT = [
   '  /agora citizen show <citizen_id>',
   '  /agora dispatch <prompt>                 (creates quick task)',
   '  /agora task <task_id> [artifacts]',
+  '  /agora task show <task_id> [artifacts]',
+  '  /agora task pause <task_id> [reason]',
+  '  /agora task resume <task_id>',
+  '  /agora task cancel <task_id> [reason]',
+  '  /agora task unblock <task_id> [reason]',
   '  /agora artifact <artifact_id>',
   '  /agora brain search <query>',
   '  /agora company [show [organization] | list]',
