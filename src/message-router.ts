@@ -33,6 +33,20 @@ export interface RouterOptions {
   commandName?: string;
 }
 
+/**
+ * Return true only when a Matrix message is an explicit connector command.
+ *
+ * Space child-room listeners share the same Matrix sync stream as the
+ * top-level timeline listener.  They need a cheap way to distinguish a
+ * command from ordinary room conversation before choosing the slash router
+ * instead of the reply-ingest path.
+ */
+export function isCommandMessage(rawMessage: string, opts: RouterOptions = {}): boolean {
+  const prefix = `/${opts.commandName ?? 'agora'}`;
+  const text = rawMessage.trim();
+  return text === prefix || text.startsWith(prefix + ' ');
+}
+
 export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecision {
   const prefix = `/${opts.commandName ?? 'agora'}`;
   const text = rawMessage.trim();

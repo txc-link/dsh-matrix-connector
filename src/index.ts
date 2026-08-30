@@ -29,7 +29,7 @@ import { MatrixClient } from './matrix-client.js';
 import { createBotTransport } from './transport/index.js';
 import { MatrixJsSdkSpaceTransport } from './transport/space-transport.js';
 import { MatrixSpaceAdapter, type SpaceEvent } from './space-adapter.js';
-import { HELP_TEXT, renderError, route } from './message-router.js';
+import { HELP_TEXT, isCommandMessage, renderError, route } from './message-router.js';
 import { ThreadRegistry, buildThreadKey } from './thread-registry.js';
 import { buildPostMortem } from './post-mortem.js';
 import { buildStatusPanel } from './status-panel.js';
@@ -74,6 +74,21 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const matrix = opts.matrixClient;
   const agora = opts.agora;
   const registry = new ThreadRegistry();
+  // A child-room event can be observed through both the shared SDK timeline
+  // listener and the Space adapter. Claim each Matrix event once so a command
+  // can never create duplicate Core tasks when both surfaces are active.
+  const claimedMatrixEventIds = new Set<string>();
+  const claimMatrixEvent = (eventId: string): boolean => {
+    const id = eventId.trim();
+    if (!id) return true;
+    if (claimedMatrixEventIds.has(id)) return false;
+    claimedMatrixEventIds.add(id);
+    if (claimedMatrixEventIds.size > 2_048) {
+      const oldest = claimedMatrixEventIds.values().next().value as string | undefined;
+      if (oldest !== undefined) claimedMatrixEventIds.delete(oldest);
+    }
+    return true;
+  };
   const securityBoundary = config.securityBoundary
     ? new SecurityDomainBoundary(config.securityBoundary)
     : undefined;
@@ -451,6 +466,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       matrix.onTimelineEvent((evt: MatrixTimelineEvent) => {
         if (evt.type !== 'm.room.message') return;
         if (evt.isOwn) return;
+        if (!claimMatrixEvent(evt.eventId)) return;
         if (evt.relatesTo?.inReplyTo?.eventId) {
           void ingestMatrixReply({
             agora,
@@ -515,6 +531,22 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
                   securityBoundary.unbindChildRoom(evt.childRoomId);
                 }
                 ctx.logger(`[space ${rootSpaceId}] ${evt.kind}`);
+                return;
+              }
+              if (evt.sender === config.userId) return;
+              if (!claimMatrixEvent(evt.eventId)) return;
+              // matrix-js-sdk versions differ in whether Room.timeline is
+              // surfaced on the client, the Room object, or both. Space child
+              // commands must therefore be routed from this listener too;
+              // ordinary messages keep using reply ingest.
+              if (isCommandMessage(evt.body, { commandName: config.commandName })) {
+                void handleRoomMessage({
+                  roomId: evt.childRoomId,
+                  senderMxid: evt.sender,
+                  body: evt.body,
+                }).catch((err: unknown) => {
+                  ctx.logger('space slash command failed:', err);
+                });
                 return;
               }
               // Forward child timeline messages through the same

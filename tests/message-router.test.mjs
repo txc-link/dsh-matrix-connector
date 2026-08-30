@@ -7,7 +7,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HELP_TEXT, renderError, route } from '../lib/message-router.js';
+import { HELP_TEXT, isCommandMessage, renderError, route } from '../lib/message-router.js';
+
+test('isCommandMessage: recognises only the configured slash-command boundary', () => {
+  assert.equal(isCommandMessage('/agora assistant ask test'), true);
+  assert.equal(isCommandMessage('  /agora help  '), true);
+  assert.equal(isCommandMessage('/agora-not-a-command'), false);
+  assert.equal(isCommandMessage('ordinary room conversation'), false);
+  assert.equal(isCommandMessage('/work help', { commandName: 'work' }), true);
+});
 
 test('route: /agora help returns verb=help with empty args', () => {
   const d = route('/agora help');

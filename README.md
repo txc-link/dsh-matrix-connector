@@ -21,7 +21,11 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.0 — company organization and executive-assistant entry
+## Status: v0.3.1 — company organization and reliable Space command entry
+
+v0.3.1 routes `/agora` commands observed on Space child-room timelines through
+the command handler and deduplicates events seen by both Matrix SDK surfaces.
+This fixes commands that appeared in Element but produced no connector reply.
 
 v0.3.0 adds a thin Matrix entry for Core-owned organizations, employment,
 executive requests, task assignment, and the commitment ledger. Configure
