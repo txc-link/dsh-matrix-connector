@@ -21,7 +21,11 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.1 — company organization and reliable Space command entry
+## Status: v0.3.2 — reliable Executive Assistant intake
+
+v0.3.2 keeps runtime node identity separate from the optional Core Project
+identity, normalizes `--due` values with explicit timezone offsets, and returns
+command failures to the Matrix room instead of leaving a silent bot.
 
 v0.3.1 routes `/agora` commands observed on Space child-room timelines through
 the command handler and deduplicates events seen by both Matrix SDK surfaces.
@@ -115,6 +119,7 @@ allowFrom: '*'
 autoJoin: true
 eventPollIntervalMs: 5000
 companyOrganization: 'my-company'
+companyProjectId: 'optional-core-project-id'
 ```
 
 Protected companion instance example (use a dedicated bot credential, never

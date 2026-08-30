@@ -149,7 +149,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   });
   const executiveAssistantBridge = new ExecutiveAssistantBridge(agora, {
     ...(config.companyOrganization ? { defaultOrganization: config.companyOrganization } : {}),
-    defaultProjectId: config.nodeId,
+    ...(config.companyProjectId ? { defaultProjectId: config.companyProjectId } : {}),
   });
 
   // v0.3.1 — war-room post-mortem: for each SSE tick on a known task,
@@ -378,6 +378,32 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     }
   }
 
+  function safeCommandError(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error);
+    const redacted = raw
+      .replace(/((?:api|access|node)?[_-]?token)\s*[=:]\s*\S+/giu, '$1=[REDACTED]')
+      .replace(/\s+/gu, ' ')
+      .trim();
+    return redacted.slice(0, 500) || 'unknown error';
+  }
+
+  async function handleRoomMessageSafely(
+    input: { roomId: string; senderMxid: string; body: string },
+    source: 'cordis' | 'timeline' | 'space',
+  ): Promise<void> {
+    try {
+      await handleRoomMessage(input);
+    } catch (error) {
+      const message = safeCommandError(error);
+      opts.context.logger(`${source} command failed: ${message}`);
+      try {
+        await matrix.sendText(input.roomId, `❌ command failed: ${message}`);
+      } catch (deliveryError) {
+        opts.context.logger(`${source} command failure receipt failed: ${safeCommandError(deliveryError)}`);
+      }
+    }
+  }
+
   async function handleAgoraEvent(evt: AgoraEvent): Promise<void> {
     const taskId = typeof evt.task_id === 'string' ? evt.task_id : undefined;
     if (!taskId) {
@@ -438,7 +464,10 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       }
 
       ctx.on('matrix.room.message', ((msg: unknown) => {
-        void handleRoomMessage(msg as { roomId: string; senderMxid: string; body: string });
+        void handleRoomMessageSafely(
+          msg as { roomId: string; senderMxid: string; body: string },
+          'cordis',
+        );
       }) as (...args: unknown[]) => void);
 
       ctx.on('agora.events.tick', ((evt: unknown) => {
@@ -487,13 +516,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           });
           return;
         }
-        void handleRoomMessage({
+        void handleRoomMessageSafely({
           roomId: evt.roomId,
           senderMxid: evt.sender,
           body: evt.body ?? '',
-        }).catch((err: unknown) => {
-          ctx.logger('slash command failed:', err);
-        });
+        }, 'timeline');
       });
 
       // v0.6 — R-E.2: opt-in Space adapter mount. The matrix-js-sdk raw
@@ -540,13 +567,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
               // commands must therefore be routed from this listener too;
               // ordinary messages keep using reply ingest.
               if (isCommandMessage(evt.body, { commandName: config.commandName })) {
-                void handleRoomMessage({
+                void handleRoomMessageSafely({
                   roomId: evt.childRoomId,
                   senderMxid: evt.sender,
                   body: evt.body,
-                }).catch((err: unknown) => {
-                  ctx.logger('space slash command failed:', err);
-                });
+                }, 'space');
                 return;
               }
               // Forward child timeline messages through the same

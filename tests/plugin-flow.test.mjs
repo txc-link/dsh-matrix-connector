@@ -304,6 +304,60 @@ test('plugin: unknown command returns error message', async (t) => {
   assert.match(matrix.sent[0].body, /unknown command/);
 });
 
+test('plugin: organization intake does not reuse nodeId as projectId', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const agora = makeAgoraStub();
+  let capturedInput;
+  agora.getOrganization = async () => ({ organization: { id: 'org-1' } });
+  agora.createExecutiveRequest = async (_organizationId, input) => {
+    capturedInput = input;
+    return {
+      ok: true,
+      request: { id: 'req-1', status: 'delegated', taskId: 'task-1', assignedPositionId: 'position-1', blockedReason: null },
+      commitment: { id: 'commitment-1', status: 'open', taskId: 'task-1' },
+    };
+  };
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@b:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok', nodeId: 'node-home-linux',
+      companyOrganization: 'agent-company',
+    },
+    matrixClient: matrix.client, agora, context: ctx.context,
+  });
+  await plugin.apply(ctx.context);
+  emit(ctx, 'matrix.room.message', {
+    roomId: '!room:hs', senderMxid: '@root:hs',
+    body: '/agora assistant ask --capability research test request',
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(capturedInput.project_id, null);
+  assert.match(matrix.sent[0].body, /req-1/);
+});
+
+test('plugin: command failures are returned to the Matrix room', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const agora = makeAgoraStub();
+  agora.health = async () => { throw new Error('Core unavailable'); };
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@b:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok', nodeId: 'node-a',
+    },
+    matrixClient: matrix.client, agora, context: ctx.context,
+  });
+  await plugin.apply(ctx.context);
+  emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@root:hs', body: '/agora im health' });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(matrix.sent[0].body, /command failed: Core unavailable/);
+  assert.ok(ctx.logs.some((entry) => entry.some((value) => String(value).includes('command failed'))));
+});
+
 test('plugin: /agora brain search <q> surfaces top hit via context/retrieve', async (t) => {
   const ctx = makeContext();
   t.after(() => ctx.cleanup());

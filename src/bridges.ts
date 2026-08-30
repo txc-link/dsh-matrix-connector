@@ -266,6 +266,12 @@ function optionValue(args: string[], index: number, name: string): string {
   return value;
 }
 
+function normalizeDueAt(value: string): string {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) throw new Error('--due must be an ISO datetime');
+  return new Date(timestamp).toISOString();
+}
+
 function parseAssistantAsk(args: string[]): AssistantAskOptions {
   let organizationRef: string | undefined;
   const capabilities: string[] = [];
@@ -288,7 +294,7 @@ function parseAssistantAsk(args: string[]): AssistantAskOptions {
     else if (arg === '--priority') {
       if (!['low', 'normal', 'high'].includes(value)) throw new Error('--priority must be low, normal, or high');
       priority = value as 'low' | 'normal' | 'high';
-    } else if (arg === '--due') dueAt = value;
+    } else if (arg === '--due') dueAt = normalizeDueAt(value);
     else if (arg === '--target') targetPositionId = value;
     else throw new Error(`unknown assistant option: ${arg}`);
   }

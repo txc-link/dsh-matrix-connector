@@ -228,11 +228,17 @@ test('ExecutiveAssistantBridge.ask: resolves slug and forwards capability to Cor
     },
   });
   const bridge = new ExecutiveAssistantBridge(agora, { defaultOrganization: 'acme', defaultProjectId: 'node-b' });
-  const out = await bridge.ask(['--capability', 'research', '--type', 'research', '调研', '电池'], '@owner:hs');
+  const out = await bridge.ask([
+    '--capability', 'research',
+    '--type', 'research',
+    '--due', '2026-09-02T18:00:00+08:00',
+    '调研', '电池',
+  ], '@owner:hs');
   assert.equal(captured.organizationId, 'org-1');
   assert.deepEqual(captured.input.requested_capabilities, ['research']);
   assert.equal(captured.input.task_type, 'research');
   assert.equal(captured.input.project_id, 'node-b');
+  assert.equal(captured.input.due_at, '2026-09-02T10:00:00.000Z');
   assert.equal(captured.input.body, '调研 电池');
   assert.match(out, /req-9/);
   assert.match(out, /task-9/);

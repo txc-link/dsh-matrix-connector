@@ -27,6 +27,8 @@ export interface MatrixConnectorConfig {
   nodeId?: string;
   /** Default Core organization id/slug used by company and assistant commands. */
   companyOrganization?: string;
+  /** Optional Core Project id for organization requests; never inferred from nodeId. */
+  companyProjectId?: string;
 
   /** Outbound HTTP request timeout (ms). */
   requestTimeoutMs?: number;
@@ -85,6 +87,7 @@ export type ProjectId = string;
 export type ResolvedMatrixConnectorConfig = Required<Omit<MatrixConnectorConfig,
   | 'nodeId'
   | 'companyOrganization'
+  | 'companyProjectId'
   | 'spaces'
   | 'securityBoundary'
   | 'speech'
@@ -92,6 +95,7 @@ export type ResolvedMatrixConnectorConfig = Required<Omit<MatrixConnectorConfig,
 >> & {
   nodeId: string;
   companyOrganization?: string;
+  companyProjectId?: string;
   spaces?: NonNullable<MatrixConnectorConfig['spaces']>;
   securityBoundary?: SecurityDomainConfig;
   speech?: NonNullable<MatrixConnectorConfig['speech']>;
@@ -109,6 +113,9 @@ export function buildConfig(input: MatrixConnectorConfig): ResolvedMatrixConnect
     nodeId: input.nodeId ?? 'node-a',
     ...(input.companyOrganization !== undefined
       ? { companyOrganization: input.companyOrganization }
+      : {}),
+    ...(input.companyProjectId !== undefined
+      ? { companyProjectId: input.companyProjectId }
       : {}),
     requestTimeoutMs: input.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     commandName: input.commandName ?? DEFAULT_COMMAND_NAME,
