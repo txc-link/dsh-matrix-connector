@@ -304,7 +304,7 @@ test('plugin: unknown explicit command returns error message', async (t) => {
   assert.match(matrix.sent[0].body, /unknown command/);
 });
 
-test('plugin: /agora artifact sends a standard Matrix file message', async (t) => {
+test('plugin: /agora artifact previews text inline and sends a standard Matrix file message', async (t) => {
   const ctx = makeContext();
   t.after(() => ctx.cleanup());
   const matrix = makeMatrixStub();
@@ -319,8 +319,10 @@ test('plugin: /agora artifact sends a standard Matrix file message', async (t) =
   emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: '/agora artifact a-1' });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(matrix.uploads, [{ filename: 'a.txt', contentType: 'text/plain', size: 1 }]);
-  assert.equal(matrix.sent[0].msgType, 'm.file');
-  assert.equal(matrix.sent[0].url, 'mxc://hs/1');
+  assert.equal(matrix.sent[0].msgType, 'm.text');
+  assert.match(matrix.sent[0].body, /群内预览/);
+  assert.equal(matrix.sent[1].msgType, 'm.file');
+  assert.equal(matrix.sent[1].url, 'mxc://hs/1');
 });
 
 test('plugin: ordinary room conversation is ignored', async (t) => {

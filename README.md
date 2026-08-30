@@ -34,6 +34,13 @@ and listens for `m.space.child` changes on `Room.currentState`. Newly added
 company rooms therefore enter the configured security boundary without a DSH
 restart or a manual `allowedRoomIds` entry.
 
+## v0.3.8 — inline text/Markdown artifact preview
+
+v0.3.8 posts a safe, bounded inline source preview before the downloadable
+`m.file` attachment for UTF-8 text artifacts, including Markdown. Binary files
+remain attachment-only. This works around Element's lack of a built-in `.md`
+attachment viewer while preserving the original artifact bytes.
+
 ## v0.3.5 — Element-native artifact files
 
 v0.3.5 sends `/agora artifact <id>` results as standard Matrix `m.file`

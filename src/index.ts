@@ -25,6 +25,7 @@ import {
   ExecutiveAssistantBridge,
   TaskBridge,
 } from './bridges.js';
+import { renderArtifactInlinePreview } from './artifact-preview.js';
 import { MatrixClient } from './matrix-client.js';
 import { createBotTransport } from './transport/index.js';
 import { MatrixJsSdkSpaceTransport } from './transport/space-transport.js';
@@ -312,6 +313,14 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       }
       case 'artifact': {
         const c = await artifactBridge.fetchBytes(decision.args[0]!);
+        const preview = renderArtifactInlinePreview({
+          filename: c.name,
+          contentType: c.mediaType,
+          bytes: c.bytes,
+        });
+        if (preview) {
+          await matrix.sendText(input.roomId, preview.body, { html: preview.html });
+        }
         await matrix.sendFile(input.roomId, {
           filename: c.name,
           contentType: c.mediaType,
