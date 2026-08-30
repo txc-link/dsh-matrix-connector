@@ -1,9 +1,9 @@
 # 实施排期 SSoT — dsh-matrix-connector (独立仓)
 
-**Last updated**: 2026-08-29 (Asia/Shanghai)
+**Last updated**: 2026-08-30 (Asia/Shanghai)
 **Owner**: 总工
 **Repo**: txc-link/dsh-matrix-connector
-**Phase**: 2 (matrix-connector @pull + three posture governance)
+**Phase**: Company OS v0.1 Matrix entry deployed (connector 0.3.0)
 
 ---
 
@@ -20,6 +20,7 @@
 | **6. @pull handler 集成 (Slice 4)** | ✅ **done (turn 21)** | §3+§4+§5 |
 | 7. Discord 冒烟 / integration test (Slice 5) | ⏳ blocked (sandbox 限制, 需用户开发机) | §3+§4+§5+§6 |
 | **8. walkthrough 回写 (Slice 5 walkthrough 部分)** | ✅ **done (turn 22)** | §7 |
+| **9. Company / Executive Assistant Matrix entry** | ✅ **deployed (0.3.0)** | dsh-agora Company OS v0.1 |
 
 ---
 
@@ -145,6 +146,8 @@ export const matrixConnectorAcl = {
 ## 8. Change Log
 
 - 2026-08-29: Phase 2 SSoT 建立 (本文件); turn 19 总工决策 Q-E1=a/Q-E2=d/Q-E3=a
+- 2026-08-30: connector 0.3.0 增加 Company / Executive Assistant 薄入口，
+  node-b 实装并完成真实 Core 路由验收；npm registry 发布因 `ENEEDAUTH` 待补。
 
 ---
 
@@ -214,3 +217,36 @@ token，故未创建独立保护身份/Space，避免复用 Company bot 形成�
 
 Planning: `Doc/09-PLANNING/TASKS/2026-08-30-personal-boundary-voice/`。
 Walkthrough: `Doc/10-WALKTHROUGH/2026-08-30-personal-boundary-voice-v02.md`。
+
+---
+
+## 11. Company OS v0.1 Matrix entry（connector 0.3.0）
+
+### 11.1 已交付
+
+- 可选 `companyOrganization` 把 connector 实例绑定到正式组织 slug/id。
+- `/agora company [show [org] | list]` 查看 Core 权威组织快照。
+- `/agora assistant ask` 支持 capability、task type、priority、due date、
+  explicit target；Matrix sender 作为 `requestedBy` 进入审计链。
+- `/agora assistant inbox|commitments|show|reconcile` 管理请求与承诺闭环。
+- connector 不保存组织、任职、路由或承诺权威状态；重启恢复由 Core DB
+  保证，Matrix 只做可替换投影和命令入口。
+
+### 11.2 安全边界
+
+当前入口只服务 Company 根域。Life、Health、Companion 不作为 Company
+部门或房间子树投影；它们继续使用独立顶层 Space、身份、device、crypto
+store 与授权边界。EA 可以负责跨域路由，但角色身份本身不获得跨域数据读取权。
+
+### 11.3 验证与部署
+
+- typecheck、build、225/225 connector tests、npm pack dry-run 全通过。
+- node-b 已安装并运行 `dsh-matrix-connector@0.3.0`，默认组织为
+  `austin-agent-company`，DSH HTTP、Matrix whoami、Core heartbeat 均通过。
+- live EA 请求由 Core 分配给 Research Lead，生成 task + commitment；任务
+  team 与 claim 同时绑定 `dsh:node-c:default`，避免“有 claim 无执行团队”。
+- npm registry `latest` 仍为 0.2.1：两台可用主机都未持有有效 npm 登录，
+  需新 `npm adduser` 或 automation token 后发布 0.3.0。
+
+Planning: `Doc/09-PLANNING/TASKS/2026-08-30-company-os-v01/`。
+Walkthrough: `Doc/10-WALKTHROUGH/2026-08-30-company-os-v01-matrix-v03.md`。
