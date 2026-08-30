@@ -486,6 +486,40 @@ export class AgoraRestClient {
   }
 
   /**
+   * v0.4.0 — task lifecycle actions. All three were verified on the
+   * deployed agora central (probe 2026-08-30): POST /api/tasks/:id/pause,
+   * /resume and /cancel. pause/cancel accept an optional `reason`;
+   * resume takes an empty object.
+   */
+  async pauseTask(taskId: string, reason = ''): Promise<TaskRecord> {
+    return this.request<TaskRecord>('POST', `/api/tasks/${encodeURIComponent(taskId)}/pause`, { reason });
+  }
+
+  async resumeTask(taskId: string): Promise<TaskRecord> {
+    return this.request<TaskRecord>('POST', `/api/tasks/${encodeURIComponent(taskId)}/resume`, {});
+  }
+
+  async cancelTask(taskId: string, reason = ''): Promise<TaskRecord> {
+    return this.request<TaskRecord>('POST', `/api/tasks/${encodeURIComponent(taskId)}/cancel`, { reason });
+  }
+
+  /**
+   * v0.4.0 — unblock a blocked task. `action` is one of retry | skip |
+   * reassign; `assignee`/`craftsman_type` apply to the reassign action.
+   */
+  async unblockTask(
+    taskId: string,
+    input: {
+      reason?: string;
+      action?: 'retry' | 'skip' | 'reassign';
+      assignee?: string;
+      craftsman_type?: string;
+    } = {},
+  ): Promise<TaskRecord> {
+    return this.request<TaskRecord>('POST', `/api/tasks/${encodeURIComponent(taskId)}/unblock`, input);
+  }
+
+  /**
    * R-D — record an inbound IM reply as a task conversation entry.
    * Opaque fields only (provider_message_ref / parent_message_ref are
    * adapter-resolved event ids; thread_task_binding_key is the opaque

@@ -63,9 +63,15 @@ export interface MatrixConnectorConfig {
   /** Local speech synthesis used by governed companion voice delivery. */
   speech?: {
     enabled: boolean;
-    provider: 'windows-sapi';
+    provider: 'windows-sapi' | 'fish-speech';
     voiceName?: string;
     rate?: number;
+    /** Fish Speech api_server base URL (Linux/macOS host), e.g. http://127.0.0.1:8080. */
+    baseUrl?: string;
+    /** Registered reference voice id (e.g. 'myvoice'). */
+    referenceId?: string;
+    /** Fish Speech per-request timeout in ms. */
+    timeoutMs?: number;
   };
   /** Durable Core outbox consumer for proactive relationship initiatives. */
   initiativeDelivery?: {

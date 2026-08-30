@@ -41,6 +41,7 @@ import { ingestMatrixReply } from './reply-ingest.js';
 import type { MatrixTimelineEvent } from './matrix-client.js';
 import { SecurityDomainBoundary } from './security-domain.js';
 import { WindowsSapiSpeechAdapter, type SpeechSynthesizer } from './speech-synthesis.js';
+import { FishSpeechSpeechAdapter } from './speech-synthesis-http.js';
 import { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
 import { isMatrixSenderAllowed } from './sender-authorization.js';
 
@@ -307,6 +308,21 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         return;
       }
       case 'task': {
+        const sub = decision.subVerb;
+        if (sub === 'pause' || sub === 'resume' || sub === 'cancel' || sub === 'unblock') {
+          const taskId = decision.args[0]!;
+          const reason = decision.args.slice(1).join(' ').trim();
+          const updated = sub === 'pause'
+            ? await agora.pauseTask(taskId, reason)
+            : sub === 'resume'
+              ? await agora.resumeTask(taskId)
+              : sub === 'cancel'
+                ? await agora.cancelTask(taskId, reason)
+                : await agora.unblockTask(taskId, reason ? { reason } : {});
+          const stage = updated.current_stage ? ` stage=${updated.current_stage}` : '';
+          await matrix.sendText(input.roomId, `✅ ${sub} ${taskId} → state=${updated.state}${stage}`);
+          return;
+        }
         const taskId = decision.args[0]!;
         const includeArtifacts = decision.args.includes('artifacts');
         const head = await taskBridge.show(taskId);
@@ -762,6 +778,7 @@ export {
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
 export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundaryKind } from './security-domain.js';
 export { WindowsSapiSpeechAdapter, readWavDurationMs, type SpeechSynthesizer, type SynthesizedSpeech } from './speech-synthesis.js';
+export { FishSpeechSpeechAdapter, type FishSpeechSpeechOptions } from './speech-synthesis-http.js';
 export { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
 export { type VerbDecision, type VerbName, route, renderError, HELP_TEXT } from './message-router.js';export { buildRoomName, ROOM_NAME_MAX_LENGTH, UNTITLED_FALLBACK } from './room-name.js';
 export { provisionTaskRoom } from './room-provisioner.js';
@@ -821,10 +838,16 @@ export async function apply(ctx: CordisContext, config?: Partial<MatrixConnector
     matrixJsSdkTransport: transport,
     ...(resolved.speech?.enabled === true
       ? {
-          speechSynthesizer: new WindowsSapiSpeechAdapter({
-            ...(resolved.speech.voiceName !== undefined ? { voiceName: resolved.speech.voiceName } : {}),
-            ...(resolved.speech.rate !== undefined ? { rate: resolved.speech.rate } : {}),
-          }),
+          speechSynthesizer: resolved.speech.provider === 'fish-speech'
+            ? new FishSpeechSpeechAdapter({
+                baseUrl: resolved.speech.baseUrl ?? 'http://127.0.0.1:8080',
+                ...(resolved.speech.referenceId !== undefined ? { referenceId: resolved.speech.referenceId } : {}),
+                ...(resolved.speech.timeoutMs !== undefined ? { timeoutMs: resolved.speech.timeoutMs } : {}),
+              })
+            : new WindowsSapiSpeechAdapter({
+                ...(resolved.speech.voiceName !== undefined ? { voiceName: resolved.speech.voiceName } : {}),
+                ...(resolved.speech.rate !== undefined ? { rate: resolved.speech.rate } : {}),
+              }),
         }
       : {}),
   });

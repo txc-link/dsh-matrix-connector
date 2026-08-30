@@ -79,6 +79,56 @@ test('agora-rest: createTask posts the v0.6.0 schema (no threadKey/actor/target 
   assert.equal(body.target, undefined);
 });
 
+test('agora-rest: pauseTask posts reason to /api/tasks/:id/pause', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ id: 't-1', state: 'paused', title: 'x', type: 'quick', creator: '@u:hs' }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+  const task = await client.pauseTask('t-1', 'waiting for approval');
+  assert.equal(task.state, 'paused');
+  assert.match(captured[0].url, /\/api\/tasks\/t-1\/pause$/);
+  assert.deepEqual(JSON.parse(captured[0].init.body), { reason: 'waiting for approval' });
+});
+
+test('agora-rest: resumeTask posts empty body to /api/tasks/:id/resume', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ id: 't-1', state: 'running', title: 'x', type: 'quick', creator: '@u:hs' }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+  const task = await client.resumeTask('t-1');
+  assert.equal(task.state, 'running');
+  assert.match(captured[0].url, /\/api\/tasks\/t-1\/resume$/);
+  assert.deepEqual(JSON.parse(captured[0].init.body), {});
+});
+
+test('agora-rest: cancelTask posts reason to /api/tasks/:id/cancel', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ id: 't-1', state: 'cancelled', title: 'x', type: 'quick', creator: '@u:hs' }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+  const task = await client.cancelTask('t-1', 'superseded');
+  assert.equal(task.state, 'cancelled');
+  assert.match(captured[0].url, /\/api\/tasks\/t-1\/cancel$/);
+  assert.deepEqual(JSON.parse(captured[0].init.body), { reason: 'superseded' });
+});
+
+test('agora-rest: unblockTask supports retry/skip/reassign payloads', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ id: 't-1', state: 'running', title: 'x', type: 'quick', creator: '@u:hs' }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+  const task = await client.unblockTask('t-1', {
+    reason: 'assign to bob',
+    action: 'reassign',
+    assignee: 'citizen-bob',
+    craftsman_type: 'codex',
+  });
+  assert.equal(task.state, 'running');
+  assert.match(captured[0].url, /\/api\/tasks\/t-1\/unblock$/);
+  assert.deepEqual(JSON.parse(captured[0].init.body), {
+    reason: 'assign to bob',
+    action: 'reassign',
+    assignee: 'citizen-bob',
+    craftsman_type: 'codex',
+  });
+});
+
 test('agora-rest: listCitizens encodes project_id (and optional status)', async () => {
   const captured = [];
   const fetchImpl = makeFetch(captured, () => okJson({ citizens: [sampleCitizen] }));
