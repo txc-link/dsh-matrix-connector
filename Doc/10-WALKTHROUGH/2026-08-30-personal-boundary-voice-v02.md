@@ -36,10 +36,12 @@ SAPI voice name is adapter configuration.
   restarted DSH listens on `127.0.0.1:3080` (HTTP 200), and Matrix `whoami`
   confirms the configured bot user and device. The restarted sync no longer
   reports the duplicate one-time-key failure.
-- Remote: Agora health ok; Synapse Matrix v1.12 reachable.
-- Deployment pending: remote Core routes are 404 and Synapse registration is
-  disabled (403 for the dedicated Life, Health, and Companion users); SSH and
-  Synapse admin provisioning are required before protected Spaces are created.
+- Registry: npm `latest` is 0.2.1; node-b dependency source is the registry
+  version rather than the temporary development tarball.
+- Remote: Core `e5b6e16` built and restarted; health, relationship, initiative,
+  and consent routes return authenticated 200. Synapse Matrix v1.12 is reachable.
+- Deployment pending: Synapse registration is disabled; admin provisioning of
+  dedicated identities is required before protected Spaces are created.
 - Restart regression: v0.2.0 exposed duplicate one-time-key uploads from the
   memory-only Rust crypto store. v0.2.1 disables that unsafe initialization;
   encrypted protected rooms stay blocked until a durable store is available.
