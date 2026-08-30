@@ -142,6 +142,14 @@ export class MatrixJsSdkSpaceTransport implements MatrixSpaceTransport {
       const childRoomId = event.getStateKey();
       if (!childRoomId) return;
       const content = event.getContent() as SdkChildState['content'] | undefined;
+      // Matrix removes a child link by replacing its state with `{}`. Such a
+      // replacement normally has prevEvent, so removal must be detected before
+      // the generic update path or the security boundary becomes add-only.
+      if (!content || Object.keys(content).length === 0) {
+        handler({ kind: 'child-removed', spaceId, childRoomId });
+        activeChildIds.delete(childRoomId);
+        return;
+      }
       if (prevEvent !== null && prevEvent !== undefined) {
         // prevEvent present → this is an update (treat as content refresh,
         // do not flip to child-removed). We forward as child-added with
@@ -153,12 +161,6 @@ export class MatrixJsSdkSpaceTransport implements MatrixSpaceTransport {
           child: updated,
         });
         activeChildIds.add(childRoomId);
-        return;
-      }
-      // prevEvent null + content empty ⇒ removal (matrix sends {} on remove).
-      if (!content || Object.keys(content).length === 0) {
-        handler({ kind: 'child-removed', spaceId, childRoomId });
-        activeChildIds.delete(childRoomId);
         return;
       }
       const added = this.contentToSpaceChild(childRoomId, content);

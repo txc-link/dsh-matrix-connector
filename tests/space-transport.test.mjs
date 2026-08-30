@@ -42,3 +42,35 @@ test('space transport listens for child state on Room.currentState', () => {
   dispose();
   assert.equal(currentState.listenerCount('RoomState.events'), 0);
 });
+
+test('space transport treats empty replacement state as child removal', () => {
+  const currentState = new EventEmitter();
+  currentState.getStateEvents = () => [];
+  const room = new EventEmitter();
+  room.roomId = '!company:hs';
+  room.currentState = currentState;
+  const sdk = { getRoom: (roomId) => roomId === room.roomId ? room : undefined };
+  const transport = new MatrixJsSdkSpaceTransport({
+    matrixJsSdkTransport: { getSdk: () => sdk },
+  });
+  const received = [];
+
+  const dispose = transport.subscribeSpaceEvents(
+    room.roomId,
+    ['!old-child:hs'],
+    (event) => received.push(event),
+  );
+  currentState.emit(
+    'RoomState.events',
+    matrixEvent({ stateKey: '!old-child:hs', content: {} }),
+    currentState,
+    matrixEvent({ stateKey: '!old-child:hs', content: { via: ['hs'] } }),
+  );
+
+  assert.deepEqual(received, [{
+    kind: 'child-removed',
+    spaceId: '!company:hs',
+    childRoomId: '!old-child:hs',
+  }]);
+  dispose();
+});

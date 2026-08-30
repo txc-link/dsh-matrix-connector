@@ -21,7 +21,13 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.6 — reliable Space room discovery
+## Status: v0.3.7 — reversible Space authorization
+
+v0.3.7 recognizes an empty replacement `m.space.child` state as removal even
+when Matrix supplies `prevEvent`, immediately unbinding the child room from the
+connector security boundary.
+
+## v0.3.6 — reliable Space room discovery
 
 v0.3.6 waits for the initial Matrix sync before reading the joined-room cache
 and listens for `m.space.child` changes on `Room.currentState`. Newly added
