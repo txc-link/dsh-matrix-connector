@@ -7,6 +7,8 @@
  * the Cordis patch at runtime.
  */
 
+import type { SecurityDomainConfig } from './security-domain.js';
+
 export interface MatrixConnectorConfig {
   /** Matrix homeserver base URL (e.g. https://matrix.example.org). */
   homeserverUrl: string;
@@ -49,6 +51,26 @@ export interface MatrixConnectorConfig {
     /** Root Space room ids whose child timelines should be aggregated. */
     rootSpaces?: string[];
   };
+  /**
+   * Strong projection boundary. Production personal deployments run one
+   * connector instance and one bot identity per security domain.
+   */
+  securityBoundary?: SecurityDomainConfig;
+  /** Local speech synthesis used by governed companion voice delivery. */
+  speech?: {
+    enabled: boolean;
+    provider: 'windows-sapi';
+    voiceName?: string;
+    rate?: number;
+  };
+  /** Durable Core outbox consumer for proactive relationship initiatives. */
+  initiativeDelivery?: {
+    enabled: boolean;
+    consumerRef: string;
+    pollIntervalMs?: number;
+    /** Provider-neutral binding ref -> Matrix room id, adapter-local only. */
+    bindings: Record<string, string>;
+  };
 }
 
 export const DEFAULT_EVENT_POLL_INTERVAL_MS = 5_000;
@@ -58,10 +80,21 @@ export const DEFAULT_COMMAND_NAME = 'agora';
 /** Project id that scopes citizen / task / brain queries for this connector. */
 export type ProjectId = string;
 
-export function buildConfig(input: MatrixConnectorConfig): Required<Omit<MatrixConnectorConfig,
+export type ResolvedMatrixConnectorConfig = Required<Omit<MatrixConnectorConfig,
   | 'nodeId'
   | 'spaces'
->> & { nodeId: string } {
+  | 'securityBoundary'
+  | 'speech'
+  | 'initiativeDelivery'
+>> & {
+  nodeId: string;
+  spaces?: NonNullable<MatrixConnectorConfig['spaces']>;
+  securityBoundary?: SecurityDomainConfig;
+  speech?: NonNullable<MatrixConnectorConfig['speech']>;
+  initiativeDelivery?: NonNullable<MatrixConnectorConfig['initiativeDelivery']>;
+};
+
+export function buildConfig(input: MatrixConnectorConfig): ResolvedMatrixConnectorConfig {
   return {
     homeserverUrl: input.homeserverUrl,
     userId: input.userId,
@@ -77,5 +110,9 @@ export function buildConfig(input: MatrixConnectorConfig): Required<Omit<MatrixC
     allowFrom: input.allowFrom ?? '*',
     autoJoin: input.autoJoin ?? true,
     eventPollIntervalMs: input.eventPollIntervalMs ?? DEFAULT_EVENT_POLL_INTERVAL_MS,
+    ...(input.spaces !== undefined ? { spaces: input.spaces } : {}),
+    ...(input.securityBoundary !== undefined ? { securityBoundary: input.securityBoundary } : {}),
+    ...(input.speech !== undefined ? { speech: input.speech } : {}),
+    ...(input.initiativeDelivery !== undefined ? { initiativeDelivery: input.initiativeDelivery } : {}),
   };
 }

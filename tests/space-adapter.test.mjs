@@ -270,3 +270,18 @@ test('space-adapter: empty config keeps Space surface opt-in (defaults to disabl
   });
   assert.equal(cfg.spaces, undefined, 'spaces config is optional and absent by default');
 });
+
+test('config preserves a single-instance security boundary and local speech settings', async () => {
+  const { buildConfig } = await import('../lib/config.js');
+  const cfg = buildConfig({
+    homeserverUrl: 'http://hs', userId: '@life-bot:hs', accessToken: 'tok', deviceId: 'dev',
+    agoraServerUrl: 'http://agora', agoraApiToken: 'agora-tok',
+    securityBoundary: {
+      domainRef: 'domain:life', boundaryKind: 'personal-office', rootSpaceId: '!life:hs',
+      requireTopLevelRoot: true,
+    },
+    speech: { enabled: true, provider: 'windows-sapi', voiceName: 'Microsoft Huihui', rate: 1 },
+  });
+  assert.equal(cfg.securityBoundary?.domainRef, 'domain:life');
+  assert.equal(cfg.speech?.provider, 'windows-sapi');
+});

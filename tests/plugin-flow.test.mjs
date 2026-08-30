@@ -91,6 +91,11 @@ function makeAgoraStub() {
   let pollEventsCalls = 0;
   return {
     health: async () => ({ status: 'ok' }),
+    authorizeInformationProjection: async () => ({ allowed: true, reason: 'same-domain', grant_id: null }),
+    assessActionRisk: async () => ({ id: 'risk-1', decision: 'allow', risk_level: 'low', reasons: [] }),
+    claimRelationshipInitiatives: async () => [],
+    markRelationshipInitiativeDelivered: async () => undefined,
+    markRelationshipInitiativeFailed: async () => undefined,
     listTemplates: async () => [
       { id: 'quick', name: 'Quick', type: 'quick', description: 'one-shot', governance: 'lean', stage_count: 1 },
     ],
@@ -315,4 +320,118 @@ test('plugin: /agora brain search <q> surfaces top hit via context/retrieve', as
   emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: '/agora brain search dispatch' });
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(matrix.sent[0].body, /doc:design/);
+});
+
+test('plugin: governed companion event sends audio only inside the bound personal domain', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const agora = makeAgoraStub();
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@companion:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok', nodeId: 'node-a',
+      securityBoundary: {
+        domainRef: 'domain:companion', boundaryKind: 'companion', rootSpaceId: '!companion:hs',
+        allowedRoomIds: ['!private:hs'], requireTopLevelRoot: true,
+      },
+      speech: { enabled: true, provider: 'windows-sapi' },
+    },
+    matrixClient: matrix.client,
+    agora,
+    context: ctx.context,
+    speechSynthesizer: {
+      synthesize: async () => ({
+        bytes: new Uint8Array([1, 2, 3]), contentType: 'audio/wav', filename: 'care.wav', durationMs: 900,
+      }),
+    },
+  });
+  await plugin.apply(ctx.context);
+  emit(ctx, 'agora.companion.voice', {
+    roomId: '!private:hs', text: '晚安。', resourceRef: 'memory:companion/1',
+    sourceDomain: 'domain:companion', actorRef: 'relationship:companion-1',
+    subjectRef: 'person:owner', purpose: 'proactive-care',
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(matrix.uploads.length, 1);
+  assert.equal(matrix.sent[0].msgType, 'm.audio');
+
+  emit(ctx, 'agora.companion.voice', {
+    roomId: '!private:hs', text: 'should not leave work', resourceRef: 'memory:work/1',
+    sourceDomain: 'domain:company', actorRef: 'relationship:companion-1',
+    subjectRef: 'person:owner', purpose: 'proactive-care',
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(matrix.uploads.length, 1);
+});
+
+test('plugin: bound personal connector ignores commands from rooms outside its boundary', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@life:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok',
+      securityBoundary: {
+        domainRef: 'domain:life', boundaryKind: 'personal-office', rootSpaceId: '!life:hs',
+        allowedRoomIds: ['!schedule:hs'], requireTopLevelRoot: true,
+      },
+    },
+    matrixClient: matrix.client, agora: makeAgoraStub(), context: ctx.context,
+  });
+  await plugin.apply(ctx.context);
+  emit(ctx, 'matrix.room.message', { roomId: '!company:hs', senderMxid: '@u:hs', body: '/agora help' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(matrix.sent.length, 0);
+});
+
+test('plugin: startup poll claims a durable Core initiative and acknowledges voice delivery', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const agora = makeAgoraStub();
+  const acknowledgements = [];
+  let claimed = false;
+  agora.claimRelationshipInitiatives = async () => {
+    if (claimed) return [];
+    claimed = true;
+    return [{
+      id: 'initiative-1', profile_id: 'rel-luna', profile_version: 1,
+      owner_ref: 'human:ceo', agent_ref: 'agent:luna', trigger: 'scheduled_check_in', modality: 'voice',
+      text: '今天也辛苦了。', resource_ref: 'memory:companion/check-in-1',
+      source_domain: 'domain:companion', target_domain: 'domain:companion',
+      delivery_binding_ref: 'binding:companion-primary', purpose: 'proactive-care',
+      requested_fields: ['text'], lease_token: 'lease-1',
+    }];
+  };
+  agora.markRelationshipInitiativeDelivered = async (id, lease) => acknowledgements.push({ id, lease });
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@companion:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok',
+      securityBoundary: {
+        domainRef: 'domain:companion', boundaryKind: 'companion', rootSpaceId: '!companion:hs',
+        allowedRoomIds: ['!private:hs'],
+      },
+      speech: { enabled: true, provider: 'windows-sapi' },
+      initiativeDelivery: {
+        enabled: true, consumerRef: 'connector:companion-node-b', pollIntervalMs: 60_000,
+        bindings: { 'binding:companion-primary': '!private:hs' },
+      },
+    },
+    matrixClient: matrix.client, agora, context: ctx.context,
+    speechSynthesizer: {
+      synthesize: async () => ({
+        bytes: new Uint8Array([1, 2, 3]), contentType: 'audio/wav', filename: 'care.wav', durationMs: 700,
+      }),
+    },
+  });
+  await plugin.apply(ctx.context);
+  ctx.runEffects();
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(matrix.sent[0].msgType, 'm.audio');
+  assert.deepEqual(acknowledgements, [{ id: 'initiative-1', lease: 'lease-1' }]);
 });

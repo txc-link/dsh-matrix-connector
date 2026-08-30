@@ -17,7 +17,24 @@ export interface MatrixRoomMessage {
   body: string;
   formattedBody?: string;
   format?: 'org.matrix.custom.html';
-  msgType?: 'm.text' | 'm.notice' | 'm.emote';
+  msgType?: 'm.text' | 'm.notice' | 'm.emote' | 'm.audio';
+  url?: string;
+  info?: {
+    duration: number;
+    mimetype: string;
+    size: number;
+  };
+  /** MSC3245 marker; standard m.audio fields remain the portable baseline. */
+  voice?: Record<string, never>;
+}
+
+export interface MatrixAudioInput {
+  readonly filename: string;
+  readonly body: string;
+  readonly contentType: string;
+  readonly bytes: Uint8Array;
+  readonly durationMs: number;
+  readonly voice?: boolean;
 }
 
 export interface MatrixSendReceipt {
@@ -120,6 +137,23 @@ export class MatrixClient {
 
   async uploadMxc(filename: string, contentType: string, bytes: Uint8Array): Promise<MatrixUploadReceipt> {
     return this.transport.uploadBytes(filename, contentType, bytes);
+  }
+
+  async sendAudio(roomId: string, input: MatrixAudioInput): Promise<MatrixSendReceipt> {
+    const upload = await this.uploadMxc(input.filename, input.contentType, input.bytes);
+    return this.transport.sendRoomMessage({
+      roomId,
+      senderMxid: '',
+      body: input.body,
+      msgType: 'm.audio',
+      url: upload.mxcUri,
+      info: {
+        duration: input.durationMs,
+        mimetype: input.contentType,
+        size: upload.sizeBytes,
+      },
+      ...(input.voice === true ? { voice: {} } : {}),
+    });
   }
 
   // v0.3.2 — return the joined room members' user_ids, or an empty

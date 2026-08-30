@@ -188,3 +188,29 @@ R-E = connector 侧 Space 适配，让 matrix Space（聚合多房间的话题�
 - agora-ts SSoT: `dsh-agora/docs/Agora-实施排期-Agora-TS.md` (本阶段 agora-ts 不动)
 - Dashboard SSoT: `dsh-agora/docs/Agora-实施排期-Dashboard.md` (R-F 并行, 不依赖 R-E)
 - R-F task_plan: `dsh-agora/.worktrees/r-f-thread-web-detail/docs/09-PLANNING/TASKS/2026-08-30-r-f-thread-web-detail/`
+
+---
+
+## 10. v0.2 — 独立个人安全域 + 主动语音
+
+| Slice | Status | Evidence |
+|---|---|---|
+| 单实例单安全域 | ✅ | `SecurityDomainBoundary`; 跨域/未知房间 fail closed |
+| 顶层 Space 约束 | ✅ | `m.space.parent` 启动校验；个人根有 parent 时拒绝启动 |
+| 独立身份部署校验 | ✅ | 同一 bot 绑定多个 domain 时拒绝 |
+| Matrix 音频 | ✅ | 标准 `m.audio` + MSC3245 voice marker |
+| 本地 TTS | ✅ | Windows SAPI；文本不进入命令参数；真实中文 WAV 冒烟 |
+| 主动投递 | ✅ | Core lease poll → authorize → risk → TTS → Matrix → ack |
+| 回归 | ✅ | 212/212 connector tests |
+
+部署边界：Company/Life/Health/Companion 各自为顶层 Space；每个受保护域
+使用独立 connector row、bot user、device、crypto store。Core 中同一个 EA
+可路由四个域，但角色本身不授予跨域读取权。生产承载健康数据前，E2EE
+durable crypto store/key backup 是上线 Gate。
+
+远端状态（2026-08-30）：Agora health ok；Synapse Matrix v1.12；新 Core 路由
+当前 authenticated 404；Synapse public registration disabled，且当前无 admin
+token，故未创建独立保护身份/Space，避免复用 Company bot 形成伪隔离。
+
+Planning: `Doc/09-PLANNING/TASKS/2026-08-30-personal-boundary-voice/`。
+Walkthrough: `Doc/10-WALKTHROUGH/2026-08-30-personal-boundary-voice-v02.md`。

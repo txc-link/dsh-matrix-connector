@@ -36,6 +36,9 @@ import { buildStuckAlert } from './stuck-alert.js';
 import { renderStuckList } from './stuck-list.js';
 import { ingestMatrixReply } from './reply-ingest.js';
 import type { MatrixTimelineEvent } from './matrix-client.js';
+import { SecurityDomainBoundary } from './security-domain.js';
+import { WindowsSapiSpeechAdapter, type SpeechSynthesizer } from './speech-synthesis.js';
+import { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -61,6 +64,7 @@ export interface PluginOptions {
    * is silently skipped.
    */
   matrixJsSdkTransport?: import('./transport/matrix-js-sdk.js').MatrixJsSdkTransport;
+  speechSynthesizer?: SpeechSynthesizer;
 }
 
 export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
@@ -68,6 +72,51 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const matrix = opts.matrixClient;
   const agora = opts.agora;
   const registry = new ThreadRegistry();
+  const securityBoundary = config.securityBoundary
+    ? new SecurityDomainBoundary(config.securityBoundary)
+    : undefined;
+  const voiceDelivery = securityBoundary && opts.speechSynthesizer
+    ? new GovernedVoiceDelivery({
+        boundary: securityBoundary,
+        agora,
+        synthesizer: opts.speechSynthesizer,
+        matrix,
+      })
+    : undefined;
+
+  async function drainRelationshipInitiatives(): Promise<void> {
+    const delivery = config.initiativeDelivery;
+    if (!delivery?.enabled || !securityBoundary || !voiceDelivery) return;
+    const initiatives = await agora.claimRelationshipInitiatives({
+      consumer_ref: delivery.consumerRef,
+      target_domain: securityBoundary.domainRef,
+      limit: 5,
+      lease_ms: 120_000,
+    });
+    for (const initiative of initiatives) {
+      const roomId = delivery.bindings[initiative.delivery_binding_ref];
+      try {
+        if (!roomId) throw new Error(`unknown delivery binding: ${initiative.delivery_binding_ref}`);
+        if (initiative.modality !== 'voice') throw new Error(`unsupported initiative modality: ${initiative.modality}`);
+        await voiceDelivery.deliver({
+          roomId,
+          text: initiative.text,
+          resourceRef: initiative.resource_ref,
+          sourceDomain: initiative.source_domain,
+          actorRef: initiative.agent_ref,
+          subjectRef: initiative.owner_ref,
+          purpose: initiative.purpose,
+          requestedFields: initiative.requested_fields,
+        });
+        await agora.markRelationshipInitiativeDelivered(initiative.id, initiative.lease_token);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await agora.markRelationshipInitiativeFailed(initiative.id, initiative.lease_token, message).catch((markError: unknown) => {
+          opts.context.logger('relationship initiative failure acknowledgement failed:', markError);
+        });
+      }
+    }
+  }
 
   const citizenBridge = new CitizenBridge(agora);
   const dispatchBridge = new DispatchBridge(agora, {
@@ -177,6 +226,13 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     senderMxid: string;
     body: string;
   }): Promise<void> {
+    if (securityBoundary) {
+      const local = securityBoundary.authorizeRoomProjection(securityBoundary.domainRef, input.roomId);
+      if (!local.allowed) {
+        opts.context.logger(`matrix inbound denied by security boundary: ${local.reason}`);
+        return;
+      }
+    }
     // v1.0.1 — every incoming room message remembers the room for
     // the org rollup view.
     registry.rememberRoom(input.roomId);
@@ -324,13 +380,32 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   }
 
   return {
-    apply(ctx) {
+    async apply(ctx) {
+      if (securityBoundary && opts.matrixJsSdkTransport) {
+        const parentDecision = securityBoundary.verifyRootParents(
+          opts.matrixJsSdkTransport.getParentSpaceIds(securityBoundary.rootSpaceId),
+        );
+        if (!parentDecision.allowed) {
+          throw new Error(`matrix security boundary invalid: ${parentDecision.reason}`);
+        }
+      }
+
       ctx.on('matrix.room.message', ((msg: unknown) => {
         void handleRoomMessage(msg as { roomId: string; senderMxid: string; body: string });
       }) as (...args: unknown[]) => void);
 
       ctx.on('agora.events.tick', ((evt: unknown) => {
         void handleAgoraEvent(evt as AgoraEvent);
+      }) as (...args: unknown[]) => void);
+
+      ctx.on('agora.companion.voice', ((request: unknown) => {
+        if (!voiceDelivery) {
+          ctx.logger('companion voice ignored: security boundary or speech synthesizer is not configured');
+          return;
+        }
+        void voiceDelivery.deliver(request as GovernedVoiceRequest).catch((error: unknown) => {
+          ctx.logger('companion voice delivery denied or failed:', error);
+        });
       }) as (...args: unknown[]) => void);
 
       // v0.5 — R-D: inbound reply wiring. Raw matrix timeline events
@@ -387,14 +462,26 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       if (spacesConfig?.enabled === true && matrixJsSdkTransport) {
         const spaceTransport = new MatrixJsSdkSpaceTransport({ matrixJsSdkTransport });
         const spaceAdapter = new MatrixSpaceAdapter(spaceTransport);
-        const rootSpaces = Array.isArray(spacesConfig.rootSpaces) ? spacesConfig.rootSpaces : [];
+        const rootSpaces = securityBoundary
+          ? [securityBoundary.rootSpaceId]
+          : Array.isArray(spacesConfig.rootSpaces) ? spacesConfig.rootSpaces : [];
         const spaceDisposers: Array<() => void> = [];
         for (const rootSpaceId of rootSpaces) {
           if (typeof rootSpaceId !== 'string' || rootSpaceId.length === 0) continue;
+          if (securityBoundary) {
+            const children = await spaceAdapter.listChildRooms(rootSpaceId);
+            for (const child of children) securityBoundary.bindChildRoom(child.roomId, rootSpaceId);
+          }
           const dispose = spaceAdapter.subscribeSpaceEvents(
             rootSpaceId,
             (evt: SpaceEvent) => {
               if (evt.kind !== 'message') {
+                if (securityBoundary && evt.kind === 'child-added') {
+                  securityBoundary.bindChildRoom(evt.child.roomId, rootSpaceId);
+                }
+                if (securityBoundary && evt.kind === 'child-removed') {
+                  securityBoundary.unbindChildRoom(evt.childRoomId);
+                }
                 ctx.logger(`[space ${rootSpaceId}] ${evt.kind}`);
                 return;
               }
@@ -430,6 +517,14 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
 
       ctx.effect((_dispose) => {
         matrix.startSync();
+        let initiativeTimer: ReturnType<typeof setInterval> | null = null;
+        if (config.initiativeDelivery?.enabled === true) {
+          const pollMs = Math.max(1_000, config.initiativeDelivery.pollIntervalMs ?? 5_000);
+          void drainRelationshipInitiatives().catch((error: unknown) => ctx.logger('relationship initiative poll failed:', error));
+          initiativeTimer = setInterval(() => {
+            void drainRelationshipInitiatives().catch((error: unknown) => ctx.logger('relationship initiative poll failed:', error));
+          }, pollMs);
+        }
 
         // v0.2 — subscribe to the agora central SSE stream. Falls back to
         // polling only if the stream fails to open (e.g. older central).
@@ -509,6 +604,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           stopped = true;
           streamController?.abort();
           if (fallbackTimer !== null) clearInterval(fallbackTimer);
+          if (initiativeTimer !== null) clearInterval(initiativeTimer);
           void matrix.stopSync();
         };
       });
@@ -527,6 +623,7 @@ export type {
   MatrixTransport,
   MatrixRoomCreator,
   CreateRoomArgs,
+  MatrixAudioInput,
 } from './matrix-client.js';
 export {
   MatrixJsSdkTransport,
@@ -542,6 +639,9 @@ export { MatrixSpaceAdapter, DEFAULT_SPACE_CONFIG, type SpaceChild, type SpaceRe
 export { type ThreadBinding, ThreadRegistry, buildThreadKey } from './thread-registry.js';
 export { CitizenBridge, DispatchBridge, TaskBridge, ArtifactBridge, AttentionBridge } from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
+export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundaryKind } from './security-domain.js';
+export { WindowsSapiSpeechAdapter, readWavDurationMs, type SpeechSynthesizer, type SynthesizedSpeech } from './speech-synthesis.js';
+export { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
 export { type VerbDecision, type VerbName, route, renderError, HELP_TEXT } from './message-router.js';export { buildRoomName, ROOM_NAME_MAX_LENGTH, UNTITLED_FALLBACK } from './room-name.js';
 export { provisionTaskRoom } from './room-provisioner.js';
 export type {
@@ -595,6 +695,15 @@ export async function apply(ctx: CordisContext, config?: Partial<MatrixConnector
     matrixClient: matrix,
     agora,
     context: ctx,
+    matrixJsSdkTransport: transport,
+    ...(resolved.speech?.enabled === true
+      ? {
+          speechSynthesizer: new WindowsSapiSpeechAdapter({
+            ...(resolved.speech.voiceName !== undefined ? { voiceName: resolved.speech.voiceName } : {}),
+            ...(resolved.speech.rate !== undefined ? { rate: resolved.speech.rate } : {}),
+          }),
+        }
+      : {}),
   });
   await plugin.apply(ctx);
   // createMatrixConnectorPlugin owns the transport lifecycle. Its effect

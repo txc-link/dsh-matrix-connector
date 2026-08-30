@@ -149,6 +149,24 @@ export interface ArtifactContent {
   name: string;
 }
 
+export interface RelationshipInitiativeDeliveryRecord {
+  id: string;
+  profile_id: string;
+  profile_version: number;
+  owner_ref: string;
+  agent_ref: string;
+  trigger: string;
+  modality: 'text' | 'voice';
+  text: string;
+  resource_ref: string;
+  source_domain: string;
+  target_domain: string;
+  delivery_binding_ref: string;
+  purpose: string;
+  requested_fields: string[];
+  lease_token: string;
+}
+
 export class AgoraRestClient {
   private readonly baseUrl: string;
   private readonly apiToken: string;
@@ -196,6 +214,62 @@ export class AgoraRestClient {
 
   async health(): Promise<HealthResponse> {
     return this.request<HealthResponse>('GET', '/api/health');
+  }
+
+  async authorizeInformationProjection(input: {
+    resource_ref: string;
+    actor_ref: string;
+    target_domain: string;
+    purpose: string;
+    permission: 'read' | 'write' | 'share' | 'execute';
+    requested_fields: string[];
+  }): Promise<{ allowed: boolean; reason: string; grant_id: string | null }> {
+    return this.request('POST', '/api/governance/information/authorize', input);
+  }
+
+  async assessActionRisk(input: {
+    actor_ref: string;
+    subject_ref: string;
+    action_kind: 'communicate';
+    reversibility: 'compensatable';
+    recurrence: 'one_off';
+    sensitive_disclosure: boolean;
+    health_impact: boolean;
+    third_party_effect: boolean;
+    new_counterparty: boolean;
+    metadata: Record<string, unknown>;
+  }): Promise<{
+    id: string;
+    decision: 'allow' | 'require_human_gate' | 'deny';
+    risk_level: 'low' | 'medium' | 'high' | 'critical';
+    reasons: string[];
+  }> {
+    return this.request('POST', '/api/governance/action-risk/assess', input);
+  }
+
+  async claimRelationshipInitiatives(input: {
+    consumer_ref: string;
+    target_domain: string;
+    limit?: number;
+    lease_ms?: number;
+  }): Promise<RelationshipInitiativeDeliveryRecord[]> {
+    const result = await this.request<{ initiatives: RelationshipInitiativeDeliveryRecord[] }>(
+      'POST', '/api/relationship-initiatives/claim', input,
+    );
+    return result.initiatives;
+  }
+
+  async markRelationshipInitiativeDelivered(id: string, leaseToken: string): Promise<void> {
+    await this.request('POST', `/api/relationship-initiatives/${encodeURIComponent(id)}/delivered`, {
+      lease_token: leaseToken,
+    });
+  }
+
+  async markRelationshipInitiativeFailed(id: string, leaseToken: string, error: string): Promise<void> {
+    await this.request('POST', `/api/relationship-initiatives/${encodeURIComponent(id)}/failed`, {
+      lease_token: leaseToken,
+      error,
+    });
   }
 
   async listTemplates(): Promise<TemplateRecord[]> {

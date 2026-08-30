@@ -24,3 +24,25 @@
         #   enabled: true
         #   rootSpaces:
         #     - '!OCNKEikkiiJEMdWyiQ:agent-hub.local'
+        #
+        # v0.2 protected personal instance. Use a separate plugin row and
+        # dedicated bot identity for every protected domain; never nest these
+        # roots under the Company Space.
+        # securityBoundary:
+        #   domainRef: 'domain:companion'
+        #   boundaryKind: 'companion'
+        #   rootSpaceId: '!COMPANION_ROOT:agent-hub.local'
+        #   requireTopLevelRoot: true
+        #   allowedRoomIds:
+        #     - '!COMPANION_PRIVATE:agent-hub.local'
+        # speech:
+        #   enabled: true
+        #   provider: 'windows-sapi'
+        #   voiceName: 'Microsoft Huihui Desktop'
+        #   rate: 0
+        # initiativeDelivery:
+        #   enabled: true
+        #   consumerRef: 'connector:companion-node-b'
+        #   pollIntervalMs: 5000
+        #   bindings:
+        #     'binding:companion-primary': '!COMPANION_PRIVATE:agent-hub.local'

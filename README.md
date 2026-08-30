@@ -21,7 +21,14 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.1.1 — code complete (probe 2026-08-28)
+## Status: v0.2.0 — governed personal boundaries and proactive voice
+
+v0.2.0 binds one connector instance to one Core security domain, keeps
+Company/Life/Health/Companion as independent top-level Spaces, consumes durable
+proactive relationship initiatives, and sends locally synthesized Matrix
+`m.audio` only after information authorization and action-risk assessment.
+
+The Core stores an opaque `delivery_binding_ref`, never a Matrix room id.
 
 This release assumes agora central has been redeployed with upstream
 PR `feat/v01-matrix-entry-facade` (commit `c0b46a6` on master), which
@@ -45,9 +52,9 @@ All v0.1 verbs are wired through:
 | `/agora im health` / `help` | `GET /api/health` | static text |
 | placeholder auto-edit | `GET /api/events?since=…` (polled) | updates the placeholder message in-place |
 
-## v0.1.1 Verification
+## v0.2.0 Verification
 
-* ✅ Unit tests: 49/49 pass (`npm test`).
+* ✅ Unit tests: 212/212 pass (`npm test`).
 * ✅ TypeScript build: clean (`npm run build`).
 * ✅ **Real-Synapse + real-agora smoke: PASSED on 2026-08-29** (run
   `tests/smoke-matrix.mjs` against `http://8.136.15.147:8008` and
@@ -56,6 +63,11 @@ All v0.1 verbs are wired through:
 * ✅ Production agora central has been deployed with upstream PR
   `feat/v01-matrix-entry-facade` (commit `c0b46a6`) plus the
   composition-wiring fix (commit `ce78b83` on master).
+* ✅ Windows SAPI Chinese voice smoke generated a 3.3 second WAV locally.
+* ⚠️ 2026-08-30 remote probe: Synapse is reachable (Matrix v1.12), but the
+  live Core has not deployed the v0.2 relationship/governance routes yet.
+* ⚠️ Public Matrix registration is disabled; protected domains require
+  dedicated bot identities provisioned through the Synapse admin API.
 
 ## Architectural Boundary
 
@@ -85,6 +97,36 @@ allowFrom: '*'
 autoJoin: true
 eventPollIntervalMs: 5000
 ```
+
+Protected companion instance example (use a dedicated bot credential, never
+the Company bot):
+
+```yaml
+securityBoundary:
+  domainRef: 'domain:companion'
+  boundaryKind: 'companion'
+  rootSpaceId: '!COMPANION_ROOT:agent-hub.local'
+  requireTopLevelRoot: true
+  allowedRoomIds:
+    - '!COMPANION_PRIVATE:agent-hub.local'
+speech:
+  enabled: true
+  provider: 'windows-sapi'
+  voiceName: 'Microsoft Huihui Desktop'
+  rate: 0
+initiativeDelivery:
+  enabled: true
+  consumerRef: 'connector:companion-node-b'
+  pollIntervalMs: 5000
+  bindings:
+    'binding:companion-primary': '!COMPANION_PRIVATE:agent-hub.local'
+spaces:
+  enabled: true
+```
+
+Run separate connector rows/instances for Company, Life, Health, and
+Companion. Logical EA ownership stays in Core; channel identities and
+cryptographic boundaries do not merge.
 
 Required environment / config values for one DSH node:
 
@@ -165,7 +207,7 @@ npm run build
 npm test
 ```
 
-Expected: `49/49 tests pass`.
+Expected: `212/212 tests pass`.
 
 ## License
 

@@ -271,7 +271,25 @@ export class MatrixJsSdkTransport implements MatrixTransport {
       body: msg.body,
       ...(msg.formattedBody !== undefined ? { formatted_body: msg.formattedBody } : {}),
       ...(msg.format !== undefined ? { format: msg.format } : {}),
+      ...(msg.url !== undefined ? { url: msg.url } : {}),
+      ...(msg.info !== undefined ? { info: msg.info } : {}),
+      ...(msg.voice !== undefined ? { 'org.matrix.msc3245.voice': msg.voice } : {}),
     };
+  }
+
+  /** Return active m.space.parent links for fail-closed boundary checks. */
+  public getParentSpaceIds(roomId: string): string[] {
+    this.requireConnected();
+    const room = this.sdk!.getRoom(roomId);
+    if (!room) return [];
+    const raw = room.currentState.getStateEvents('m.space.parent' as never) as unknown;
+    const events = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    return events.flatMap((event) => {
+      const matrixEvent = event as MatrixEvent;
+      const content = matrixEvent.getContent() as { via?: string[] };
+      const stateKey = matrixEvent.getStateKey();
+      return stateKey && Array.isArray(content.via) && content.via.length > 0 ? [stateKey] : [];
+    });
   }
 
   public buildEditContent(
