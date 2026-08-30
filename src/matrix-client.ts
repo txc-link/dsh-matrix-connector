@@ -17,10 +17,10 @@ export interface MatrixRoomMessage {
   body: string;
   formattedBody?: string;
   format?: 'org.matrix.custom.html';
-  msgType?: 'm.text' | 'm.notice' | 'm.emote' | 'm.audio';
+  msgType?: 'm.text' | 'm.notice' | 'm.emote' | 'm.audio' | 'm.file';
   url?: string;
   info?: {
-    duration: number;
+    duration?: number;
     mimetype: string;
     size: number;
   };
@@ -35,6 +35,12 @@ export interface MatrixAudioInput {
   readonly bytes: Uint8Array;
   readonly durationMs: number;
   readonly voice?: boolean;
+}
+
+export interface MatrixFileInput {
+  readonly filename: string;
+  readonly contentType: string;
+  readonly bytes: Uint8Array;
 }
 
 export interface MatrixSendReceipt {
@@ -153,6 +159,21 @@ export class MatrixClient {
         size: upload.sizeBytes,
       },
       ...(input.voice === true ? { voice: {} } : {}),
+    });
+  }
+
+  async sendFile(roomId: string, input: MatrixFileInput): Promise<MatrixSendReceipt> {
+    const upload = await this.uploadMxc(input.filename, input.contentType, input.bytes);
+    return this.transport.sendRoomMessage({
+      roomId,
+      senderMxid: '',
+      body: input.filename,
+      msgType: 'm.file',
+      url: upload.mxcUri,
+      info: {
+        mimetype: input.contentType,
+        size: upload.sizeBytes,
+      },
     });
   }
 

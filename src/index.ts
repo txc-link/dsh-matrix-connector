@@ -312,8 +312,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       }
       case 'artifact': {
         const c = await artifactBridge.fetchBytes(decision.args[0]!);
-        const upload = await matrix.uploadMxc(c.name, c.mediaType, c.bytes);
-        await matrix.sendText(input.roomId, `uploaded: ${upload.mxcUri} (${upload.sizeBytes} bytes)`);
+        await matrix.sendFile(input.roomId, {
+          filename: c.name,
+          contentType: c.mediaType,
+          bytes: c.bytes,
+        });
         return;
       }
       case 'brain': {

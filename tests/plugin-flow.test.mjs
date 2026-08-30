@@ -304,6 +304,25 @@ test('plugin: unknown explicit command returns error message', async (t) => {
   assert.match(matrix.sent[0].body, /unknown command/);
 });
 
+test('plugin: /agora artifact sends a standard Matrix file message', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@b:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok', nodeId: 'node-a',
+    },
+    matrixClient: matrix.client, agora: makeAgoraStub(), context: ctx.context,
+  });
+  await plugin.apply(ctx.context);
+  emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: '/agora artifact a-1' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(matrix.uploads, [{ filename: 'a.txt', contentType: 'text/plain', size: 1 }]);
+  assert.equal(matrix.sent[0].msgType, 'm.file');
+  assert.equal(matrix.sent[0].url, 'mxc://hs/1');
+});
+
 test('plugin: ordinary room conversation is ignored', async (t) => {
   const ctx = makeContext();
   t.after(() => ctx.cleanup());

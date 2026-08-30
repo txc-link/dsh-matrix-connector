@@ -124,3 +124,20 @@ test('matrix-client: createRoom throws clear error when transport lacks createRo
     /transport does not implement createRoom/,
   );
 });
+
+test('matrix-client: sendFile uploads bytes and sends a standard m.file event', async () => {
+  const { transport, calls } = makeTransport();
+  const client = new MatrixClient(transport);
+  const bytes = new Uint8Array([0x01, 0x02, 0x03]);
+
+  const out = await client.sendFile('!room:hs', {
+    filename: 'deliverable.md', contentType: 'text/markdown', bytes,
+  });
+
+  assert.equal(out.eventId, 'evt_1');
+  assert.deepEqual(calls.upload[0], { filename: 'deliverable.md', contentType: 'text/markdown', size: 3 });
+  assert.equal(calls.send[0].msgType, 'm.file');
+  assert.equal(calls.send[0].body, 'deliverable.md');
+  assert.equal(calls.send[0].url, 'mxc://homeserver/1');
+  assert.deepEqual(calls.send[0].info, { mimetype: 'text/markdown', size: 3 });
+});

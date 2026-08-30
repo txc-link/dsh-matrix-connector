@@ -21,7 +21,13 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.4 — durable task artifact lookup
+## Status: v0.3.5 — Element-native artifact files
+
+v0.3.5 sends `/agora artifact <id>` results as standard Matrix `m.file`
+messages, so Element renders a normal downloadable file card instead of a raw
+`mxc://` URI.
+
+## v0.3.4 — durable task artifact lookup
 
 v0.3.4 makes `/agora task <id> artifacts` query the Core Artifact collection by
 `owner_kind=task&owner_ref=<id>` instead of assuming artifacts are embedded in
