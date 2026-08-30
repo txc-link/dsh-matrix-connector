@@ -32,9 +32,14 @@ SAPI voice name is adapter configuration.
 - TypeScript build: pass.
 - Connector tests: 212/212 pass.
 - Real SAPI: Chinese WAV generated locally (145730 bytes, 3303 ms).
+- Node-b: `dsh-matrix-connector@0.2.1` installed in the DSH `web` profile;
+  restarted DSH listens on `127.0.0.1:3080` (HTTP 200), and Matrix `whoami`
+  confirms the configured bot user and device. The restarted sync no longer
+  reports the duplicate one-time-key failure.
 - Remote: Agora health ok; Synapse Matrix v1.12 reachable.
 - Deployment pending: remote Core routes are 404 and Synapse registration is
-  disabled; admin provisioning is required before protected Spaces are created.
+  disabled (403 for the dedicated Life, Health, and Companion users); SSH and
+  Synapse admin provisioning are required before protected Spaces are created.
 - Restart regression: v0.2.0 exposed duplicate one-time-key uploads from the
   memory-only Rust crypto store. v0.2.1 disables that unsafe initialization;
   encrypted protected rooms stay blocked until a durable store is available.
