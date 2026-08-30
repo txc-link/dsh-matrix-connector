@@ -15,7 +15,9 @@ import {
   ArtifactBridge,
   AttentionBridge,
   CitizenBridge,
+  CompanyBridge,
   DispatchBridge,
+  ExecutiveAssistantBridge,
   TaskBridge,
 } from '../lib/bridges.js';
 
@@ -46,6 +48,38 @@ function makeAgora(overrides = {}) {
       channel_policies: {}, runtime_projection: { adapter: 'openclaw', auto_provision: false, metadata: {} },
     },
     pollEvents: async () => ({ events: [], nextSince: 0 }),
+    listOrganizations: async () => overrides.organizations ?? [],
+    getOrganization: async () => overrides.organizationSnapshot ?? {
+      organization: {
+        id: 'org-1', slug: 'acme', name: 'Acme', ownerRef: 'owner',
+        informationDomain: 'domain:company', purpose: 'Build a durable agent company', status: 'active',
+      },
+      units: [{ id: 'unit-1', name: 'Research', kind: 'department', parentUnitId: null }],
+      positions: [
+        { id: 'pos-ea', unitId: 'unit-1', title: 'Executive Assistant', kind: 'executive_assistant', reportsToPositionId: null },
+        { id: 'pos-r', unitId: 'unit-1', title: 'Research Lead', kind: 'lead', reportsToPositionId: 'pos-ea' },
+      ],
+      employments: [
+        { id: 'emp-ea', positionId: 'pos-ea', subjectRef: 'node-b/ea', employmentKind: 'resident', status: 'active' },
+        { id: 'emp-old', positionId: 'pos-r', subjectRef: 'old/research', employmentKind: 'resident', status: 'ended' },
+      ],
+    },
+    createExecutiveRequest: async (_org, input) => overrides.executiveResult ?? {
+      ok: true,
+      request: {
+        id: 'req-1', status: 'delegated', taskId: 'task-1', title: input.title,
+        assignedPositionId: 'pos-r', blockedReason: null,
+      },
+      commitment: { id: 'commit-1', status: 'open', taskId: 'task-1' },
+    },
+    listExecutiveInbox: async () => overrides.executiveInbox ?? [],
+    listCommitments: async () => overrides.commitments ?? [],
+    getExecutiveRequest: async () => overrides.executiveRequest ?? { id: 'req-1', title: 'Research', status: 'delegated', taskId: 'task-1' },
+    reconcileExecutiveRequest: async () => overrides.executiveResult ?? {
+      ok: true,
+      request: { id: 'req-1', title: 'Research', status: 'completed', taskId: 'task-1' },
+      commitment: { id: 'commit-1', status: 'fulfilled', taskId: 'task-1', evidenceRefs: ['artifact:1'] },
+    },
     ...overrides.agora,
   };
 }
@@ -166,4 +200,64 @@ test('AttentionBridge.search: empty hits returns friendly message', async () => 
   const bridge = new AttentionBridge(makeAgora({ brainHits: [] }));
   const out = await bridge.search('node-a', 'foo');
   assert.match(out, /no matches/);
+});
+
+test('CompanyBridge.show: renders hierarchy and only current staff as occupied', async () => {
+  const bridge = new CompanyBridge(makeAgora(), { defaultOrganization: 'acme' });
+  const out = await bridge.show();
+  assert.match(out, /Acme/);
+  assert.match(out, /domain:company/);
+  assert.match(out, /Executive Assistant/);
+  assert.match(out, /node-b\/ea/);
+  assert.match(out, /Research Lead.*vacant/);
+});
+
+test('ExecutiveAssistantBridge.ask: resolves slug and forwards capability to Core', async () => {
+  const captured = { organizationId: null, input: null };
+  const agora = makeAgora({
+    agora: {
+      createExecutiveRequest: async (organizationId, input) => {
+        captured.organizationId = organizationId;
+        captured.input = input;
+        return {
+          ok: true,
+          request: { id: 'req-9', status: 'delegated', taskId: 'task-9', assignedPositionId: 'pos-r', blockedReason: null },
+          commitment: { id: 'commit-9', status: 'open', taskId: 'task-9' },
+        };
+      },
+    },
+  });
+  const bridge = new ExecutiveAssistantBridge(agora, { defaultOrganization: 'acme', defaultProjectId: 'node-b' });
+  const out = await bridge.ask(['--capability', 'research', '--type', 'research', '调研', '电池'], '@owner:hs');
+  assert.equal(captured.organizationId, 'org-1');
+  assert.deepEqual(captured.input.requested_capabilities, ['research']);
+  assert.equal(captured.input.task_type, 'research');
+  assert.equal(captured.input.project_id, 'node-b');
+  assert.equal(captured.input.body, '调研 电池');
+  assert.match(out, /req-9/);
+  assert.match(out, /task-9/);
+});
+
+test('ExecutiveAssistantBridge.ask: renders durable blocked intake honestly', async () => {
+  const bridge = new ExecutiveAssistantBridge(makeAgora({
+    executiveResult: {
+      ok: true,
+      request: { id: 'req-b', status: 'blocked', taskId: null, assignedPositionId: null, blockedReason: 'no active executive assistant employment' },
+      commitment: null,
+    },
+  }), { defaultOrganization: 'acme', defaultProjectId: 'node-b' });
+  const out = await bridge.ask(['请处理'], '@owner:hs');
+  assert.match(out, /blocked/);
+  assert.match(out, /no active executive assistant/);
+  assert.match(out, /req-b/);
+});
+
+test('ExecutiveAssistantBridge.inbox: renders request status and task', async () => {
+  const bridge = new ExecutiveAssistantBridge(makeAgora({
+    executiveInbox: [{ id: 'req-1', title: 'Research', status: 'delegated', priority: 'high', taskId: 'task-1' }],
+  }), { defaultOrganization: 'acme', defaultProjectId: 'node-b' });
+  const out = await bridge.inbox([]);
+  assert.match(out, /Assistant inbox \(1\)/);
+  assert.match(out, /Research/);
+  assert.match(out, /task-1/);
 });

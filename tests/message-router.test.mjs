@@ -58,6 +58,38 @@ test('route: /agora brain without search → INVALID_SYNTAX', () => {
   assert.equal(d.errorCode, 'INVALID_SYNTAX');
 });
 
+test('route: /agora company defaults to show', () => {
+  const d = route('/agora company');
+  assert.equal(d.verb, 'company');
+  assert.equal(d.subVerb, 'show');
+  assert.deepEqual(d.args, []);
+});
+
+test('route: /agora company list and show are structured', () => {
+  const list = route('/agora company list');
+  assert.equal(list.verb, 'company');
+  assert.equal(list.subVerb, 'list');
+  const show = route('/agora company show acme');
+  assert.equal(show.verb, 'company');
+  assert.equal(show.subVerb, 'show');
+  assert.deepEqual(show.args, ['acme']);
+});
+
+test('route: /agora assistant ask preserves adapter options and prompt', () => {
+  const d = route('/agora assistant ask --capability research 调研新材料');
+  assert.equal(d.verb, 'assistant');
+  assert.equal(d.subVerb, 'ask');
+  assert.deepEqual(d.args, ['--capability', 'research', '调研新材料']);
+});
+
+test('route: assistant inbox is valid and show requires request id', () => {
+  const inbox = route('/agora assistant inbox');
+  assert.equal(inbox.verb, 'assistant');
+  assert.equal(inbox.subVerb, 'inbox');
+  const show = route('/agora assistant show');
+  assert.equal(show.errorCode, 'MISSING_ARG');
+});
+
 test('route: non-recognised prefix → UNKNOWN_VERB', () => {
   const d = route('hello world');
   assert.equal(d.verb, 'unknown');
@@ -82,8 +114,8 @@ test('renderError: INVALID_SYNTAX mentions /agora help', () => {
   assert.match(renderError({ verb: 'brain', args: [], errorCode: 'INVALID_SYNTAX' }), /\/agora help/);
 });
 
-test('HELP_TEXT: contains every v0.1 verb', () => {
-  for (const v of ['citizen', 'dispatch', 'task', 'artifact', 'brain', 'im', 'help']) {
+test('HELP_TEXT: contains every supported verb', () => {
+  for (const v of ['citizen', 'dispatch', 'task', 'artifact', 'brain', 'company', 'assistant', 'im', 'help']) {
     assert.match(HELP_TEXT, new RegExp(v));
   }
 });

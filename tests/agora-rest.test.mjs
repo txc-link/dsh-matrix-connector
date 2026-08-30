@@ -230,3 +230,53 @@ test('agora-rest: recordInboundReply omits optional parent when absent', async (
   const body = JSON.parse(captured[0].init.body);
   assert.equal(body.parent_message_ref, undefined);
 });
+
+test('agora-rest: lists organizations and resolves a snapshot by slug', async () => {
+  const captured = [];
+  const organization = {
+    id: 'org-1', slug: 'acme', name: 'Acme', ownerRef: 'owner',
+    informationDomain: 'domain:company', purpose: null, status: 'active',
+    version: 1, createdAt: '2026-08-30T00:00:00Z', updatedAt: '2026-08-30T00:00:00Z', metadata: null,
+  };
+  const fetchImpl = makeFetch(captured, () => captured.length === 1
+    ? okJson({ organizations: [organization] })
+    : okJson({ organization, units: [], positions: [], employments: [] }));
+  const client = new AgoraRestClient({ baseUrl: 'http://agora:8080', apiToken: 't', fetchImpl });
+  assert.equal((await client.listOrganizations())[0].slug, 'acme');
+  assert.equal((await client.getOrganization('acme')).organization.id, 'org-1');
+  assert.match(captured[1].url, /\/api\/organizations\/acme$/);
+});
+
+test('agora-rest: creates an executive request with the Core wire schema', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({
+    ok: true,
+    request: { id: 'req-1', status: 'delegated', taskId: 'task-1' },
+    commitment: { id: 'commit-1', status: 'open', taskId: 'task-1' },
+  }, 201));
+  const client = new AgoraRestClient({ baseUrl: 'http://agora:8080', apiToken: 't', fetchImpl });
+  const result = await client.createExecutiveRequest('org-1', {
+    requested_by: '@owner:hs',
+    title: 'Research batteries',
+    body: 'Research batteries',
+    priority: 'high',
+    requested_capabilities: ['research'],
+    task_type: 'research',
+    project_id: 'node-b',
+  });
+  assert.equal(result.request.id, 'req-1');
+  assert.match(captured[0].url, /\/api\/organizations\/org-1\/assistant\/requests$/);
+  const body = JSON.parse(captured[0].init.body);
+  assert.equal(body.requested_by, '@owner:hs');
+  assert.deepEqual(body.requested_capabilities, ['research']);
+  assert.equal(body.project_id, 'node-b');
+});
+
+test('agora-rest: lists assistant inbox with an encoded status filter', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ requests: [{ id: 'req-1', status: 'blocked' }] }));
+  const client = new AgoraRestClient({ baseUrl: 'http://agora:8080', apiToken: 't', fetchImpl });
+  const requests = await client.listExecutiveInbox('org-1', 'blocked');
+  assert.equal(requests[0].id, 'req-1');
+  assert.match(captured[0].url, /status=blocked/);
+});

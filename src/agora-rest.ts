@@ -167,6 +167,141 @@ export interface RelationshipInitiativeDeliveryRecord {
   lease_token: string;
 }
 
+export interface OrganizationRecord {
+  id: string;
+  slug: string;
+  name: string;
+  ownerRef: string;
+  informationDomain: string;
+  purpose: string | null;
+  status: 'active' | 'archived';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface OrganizationUnitRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  kind: 'executive_office' | 'department' | 'team';
+  parentUnitId: string | null;
+  responsibilities: string[];
+  status: 'active' | 'archived';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface PositionRecord {
+  id: string;
+  organizationId: string;
+  unitId: string;
+  title: string;
+  kind: 'executive_assistant' | 'lead' | 'specialist' | 'worker' | 'auditor';
+  reportsToPositionId: string | null;
+  responsibilities: string[];
+  skills: string[];
+  status: 'active' | 'archived';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface EmploymentRecord {
+  id: string;
+  organizationId: string;
+  positionId: string;
+  subjectKind: 'human' | 'agent';
+  subjectRef: string;
+  employmentKind: 'resident' | 'on_demand' | 'advisor';
+  status: 'active' | 'suspended' | 'ended';
+  startedAt: string;
+  endedAt: string | null;
+  endedReason: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface OrganizationSnapshot {
+  organization: OrganizationRecord;
+  units: OrganizationUnitRecord[];
+  positions: PositionRecord[];
+  employments: EmploymentRecord[];
+}
+
+export type ExecutiveRequestStatus =
+  | 'received'
+  | 'triage'
+  | 'delegated'
+  | 'blocked'
+  | 'completed'
+  | 'cancelled';
+
+export interface ExecutiveRequestRecord {
+  id: string;
+  organizationId: string;
+  requestedBy: string;
+  title: string;
+  body: string;
+  priority: 'low' | 'normal' | 'high';
+  requestedCapabilities: string[];
+  taskType: string;
+  projectId: string | null;
+  dueAt: string | null;
+  status: ExecutiveRequestStatus;
+  assignedPositionId: string | null;
+  assignedEmploymentId: string | null;
+  taskId: string | null;
+  blockedReason: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface CommitmentRecord {
+  id: string;
+  organizationId: string;
+  requestId: string;
+  ownerPositionId: string;
+  ownerEmploymentId: string;
+  taskId: string;
+  summary: string;
+  dueAt: string | null;
+  status: 'open' | 'fulfilled' | 'cancelled';
+  evidenceRefs: string[];
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  fulfilledAt: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface CreateExecutiveRequestInput {
+  requested_by: string;
+  title: string;
+  body: string;
+  priority?: 'low' | 'normal' | 'high';
+  requested_capabilities?: string[];
+  task_type?: string;
+  project_id?: string | null;
+  due_at?: string | null;
+  target_position_id?: string | null;
+}
+
+export interface ExecutiveAssistantResult {
+  ok: true;
+  request: ExecutiveRequestRecord;
+  commitment: CommitmentRecord | null;
+}
+
 export class AgoraRestClient {
   private readonly baseUrl: string;
   private readonly apiToken: string;
@@ -214,6 +349,68 @@ export class AgoraRestClient {
 
   async health(): Promise<HealthResponse> {
     return this.request<HealthResponse>('GET', '/api/health');
+  }
+
+  async listOrganizations(): Promise<OrganizationRecord[]> {
+    const result = await this.request<{ organizations: OrganizationRecord[] }>('GET', '/api/organizations');
+    return result.organizations;
+  }
+
+  async getOrganization(idOrSlug: string): Promise<OrganizationSnapshot> {
+    return this.request<OrganizationSnapshot>(
+      'GET',
+      `/api/organizations/${encodeURIComponent(idOrSlug)}`,
+    );
+  }
+
+  async createExecutiveRequest(
+    organizationId: string,
+    input: CreateExecutiveRequestInput,
+  ): Promise<ExecutiveAssistantResult> {
+    return this.request<ExecutiveAssistantResult>(
+      'POST',
+      `/api/organizations/${encodeURIComponent(organizationId)}/assistant/requests`,
+      input,
+    );
+  }
+
+  async listExecutiveInbox(
+    organizationId: string,
+    status?: ExecutiveRequestStatus,
+  ): Promise<ExecutiveRequestRecord[]> {
+    const query = status ? `?${new URLSearchParams({ status }).toString()}` : '';
+    const result = await this.request<{ requests: ExecutiveRequestRecord[] }>(
+      'GET',
+      `/api/organizations/${encodeURIComponent(organizationId)}/assistant/inbox${query}`,
+    );
+    return result.requests;
+  }
+
+  async listCommitments(organizationId: string): Promise<CommitmentRecord[]> {
+    const result = await this.request<{ commitments: CommitmentRecord[] }>(
+      'GET',
+      `/api/organizations/${encodeURIComponent(organizationId)}/assistant/commitments`,
+    );
+    return result.commitments;
+  }
+
+  async getExecutiveRequest(organizationId: string, requestId: string): Promise<ExecutiveRequestRecord> {
+    return this.request<ExecutiveRequestRecord>(
+      'GET',
+      `/api/organizations/${encodeURIComponent(organizationId)}/assistant/requests/${encodeURIComponent(requestId)}`,
+    );
+  }
+
+  async reconcileExecutiveRequest(
+    organizationId: string,
+    requestId: string,
+    evidenceRefs: string[] = [],
+  ): Promise<ExecutiveAssistantResult> {
+    return this.request<ExecutiveAssistantResult>(
+      'POST',
+      `/api/organizations/${encodeURIComponent(organizationId)}/assistant/requests/${encodeURIComponent(requestId)}/reconcile`,
+      { evidence_refs: evidenceRefs },
+    );
   }
 
   async authorizeInformationProjection(input: {

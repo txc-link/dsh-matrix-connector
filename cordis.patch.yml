@@ -7,6 +7,9 @@
       config:
         requestTimeoutMs: 10000
         commandName: 'agora'
+        # Optional Core organization id/slug for concise `/agora company`
+        # and `/agora assistant ...` commands.
+        # companyOrganization: 'my-company'
         nodeEnabled: true
         shareSessionInChannel: false
         allowFrom: '*'

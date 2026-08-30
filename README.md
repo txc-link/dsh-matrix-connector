@@ -21,9 +21,14 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.2.0 — governed personal boundaries and proactive voice
+## Status: v0.3.0 — company organization and executive-assistant entry
 
-v0.2.0 binds one connector instance to one Core security domain, keeps
+v0.3.0 adds a thin Matrix entry for Core-owned organizations, employment,
+executive requests, task assignment, and the commitment ledger. Configure
+`companyOrganization` with a Core organization id or slug to use concise
+commands such as `/agora company` and `/agora assistant ask ...`.
+
+The v0.2 boundary remains intact: one connector instance binds to one Core security domain, keeping
 Company/Life/Health/Companion as independent top-level Spaces, consumes durable
 proactive relationship initiatives, and sends locally synthesized Matrix
 `m.audio` only after information authorization and action-risk assessment.
@@ -49,12 +54,17 @@ All v0.1 verbs are wired through:
 | `/agora brain search <query>` | `POST /api/projects/:id/context/retrieve` | hybrid brain lookup |
 | `/agora citizen list` | `GET /api/citizens?project_id=<id>` | rendered with role + status |
 | `/agora citizen show <id>` | `GET /api/citizens/:id` | persona + boundaries + skills |
+| `/agora company [show [org] \| list]` | `GET /api/organizations` | durable organization, reporting, and employment view |
+| `/agora assistant ask [options] <request>` | `POST /api/organizations/:id/assistant/requests` | creates a Core request, assigned task, and commitment |
+| `/agora assistant inbox [status]` | `GET .../assistant/inbox` | durable owner inbox |
+| `/agora assistant commitments` | `GET .../assistant/commitments` | commitment ledger |
+| `/agora assistant show/reconcile <request_id>` | assistant request routes | inspect or reconcile task outcome |
 | `/agora im health` / `help` | `GET /api/health` | static text |
 | placeholder auto-edit | `GET /api/events?since=…` (polled) | updates the placeholder message in-place |
 
-## v0.2.0 Verification
+## v0.3.0 Verification
 
-* ✅ Unit tests: 212/212 pass (`npm test`).
+* ✅ Unit tests: 225/225 pass (`npm test`).
 * ✅ TypeScript build: clean (`npm run build`).
 * ✅ **Real-Synapse + real-agora smoke: PASSED on 2026-08-29** (run
   `tests/smoke-matrix.mjs` against `http://8.136.15.147:8008` and
@@ -100,6 +110,7 @@ shareSessionInChannel: false
 allowFrom: '*'
 autoJoin: true
 eventPollIntervalMs: 5000
+companyOrganization: 'my-company'
 ```
 
 Protected companion instance example (use a dedicated bot credential, never
@@ -155,7 +166,7 @@ The script writes the credentials to an env file (mode 0600).
 ```
 src/
   agora-rest.ts          agora central REST client (typed fetch)
-  bridges.ts             CitizenBridge / DispatchBridge / TaskBridge / ArtifactBridge / AttentionBridge
+  bridges.ts             Task, company, and executive-assistant REST bridges
   message-router.ts      /agora <verb> [args] parser
   matrix-client.ts       matrix-js-sdk wrapper
   thread-registry.ts     threadKey ↔ task_id ↔ placeholder bindings

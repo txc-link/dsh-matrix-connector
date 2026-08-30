@@ -56,6 +56,7 @@ function makeHarness() {
   let timelineHandler = null;
   const replied = [];
   const sent = [];
+  const executiveRequests = [];
   const transport = {
     sendRoomMessage: async (msg) => {
       sent.push(msg);
@@ -91,11 +92,33 @@ function makeHarness() {
       replied.push({ taskId, input });
       return { id: 'rc-1', deduped: false };
     },
+    listOrganizations: async () => [{ id: 'org-1', slug: 'acme', name: 'Acme', status: 'active', informationDomain: 'domain:company' }],
+    getOrganization: async () => ({
+      organization: { id: 'org-1', slug: 'acme', name: 'Acme', status: 'active', informationDomain: 'domain:company', purpose: 'Agent company' },
+      units: [], positions: [], employments: [],
+    }),
+    createExecutiveRequest: async (organizationId, input) => {
+      executiveRequests.push({ organizationId, input });
+      return {
+        ok: true,
+        request: { id: 'req-1', status: 'triage', taskId: 'task-1', assignedPositionId: 'pos-ea', blockedReason: null },
+        commitment: { id: 'commit-1', status: 'open', taskId: 'task-1' },
+      };
+    },
+    listExecutiveInbox: async () => [],
+    listCommitments: async () => [],
+    getExecutiveRequest: async () => ({ id: 'req-1', status: 'triage', title: 'x', priority: 'normal', requestedCapabilities: [], taskId: 'task-1', blockedReason: null }),
+    reconcileExecutiveRequest: async () => ({
+      ok: true,
+      request: { id: 'req-1', status: 'triage', taskId: 'task-1', assignedPositionId: 'pos-ea', blockedReason: null },
+      commitment: { id: 'commit-1', status: 'open', taskId: 'task-1' },
+    }),
   };
   return {
     timelineHandler: () => timelineHandler,
     replied,
     sent,
+    executiveRequests,
     agora,
     client: new MatrixClient(transport),
   };
@@ -110,6 +133,7 @@ function buildPlugin(harness, ctx) {
       agoraServerUrl: 'http://agora:8080',
       agoraApiToken: 'token',
       nodeId: 'node-a',
+      companyOrganization: 'acme',
       commandName: 'agora',
       requestTimeoutMs: 10000,
       autoJoin: true,
@@ -162,6 +186,40 @@ test('timeline: unknown non-reply message is routed (renderError reply), not dro
   await tick();
 
   assert.ok(harness.sent.length >= 1, 'non-reply messages must hit the slash router path');
+  ctx.cleanup();
+});
+
+test('timeline: /agora company renders the Core organization snapshot', async () => {
+  const harness = makeHarness();
+  const ctx = buildPlugin(harness, makeContext());
+  harness.timelineHandler()({
+    roomId: ROOM,
+    eventId: 'evt_company',
+    sender: '@alice:agent-hub.local',
+    type: 'm.room.message',
+    body: '/agora company',
+  });
+  await tick();
+  assert.match(harness.sent[0].body, /Acme/);
+  assert.match(harness.sent[0].body, /domain:company/);
+  ctx.cleanup();
+});
+
+test('timeline: /agora assistant ask creates a durable Core request', async () => {
+  const harness = makeHarness();
+  const ctx = buildPlugin(harness, makeContext());
+  harness.timelineHandler()({
+    roomId: ROOM,
+    eventId: 'evt_assistant',
+    sender: '@alice:agent-hub.local',
+    type: 'm.room.message',
+    body: '/agora assistant ask --capability research 调研电池',
+  });
+  await tick();
+  assert.equal(harness.executiveRequests.length, 1);
+  assert.equal(harness.executiveRequests[0].organizationId, 'org-1');
+  assert.deepEqual(harness.executiveRequests[0].input.requested_capabilities, ['research']);
+  assert.match(harness.sent[0].body, /req-1/);
   ctx.cleanup();
 });
 

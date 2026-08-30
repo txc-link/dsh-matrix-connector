@@ -1,7 +1,7 @@
 {
   "id": "dsh-matrix-connector",
   "name": "Matrix Connector",
-  "description": "Connect DSH to Agora via Matrix IM rooms (citizens visible, dispatch, tasks, brain search).",
-  "version": "0.2.1",
+  "description": "Connect DSH to Agora via Matrix IM rooms, including durable company and executive-assistant workflows.",
+  "version": "0.3.0",
   "entry": "lib/index.js"
 }

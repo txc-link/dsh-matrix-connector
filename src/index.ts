@@ -20,7 +20,9 @@ import {
   ArtifactBridge,
   AttentionBridge,
   CitizenBridge,
+  CompanyBridge,
   DispatchBridge,
+  ExecutiveAssistantBridge,
   TaskBridge,
 } from './bridges.js';
 import { MatrixClient } from './matrix-client.js';
@@ -127,6 +129,13 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const taskBridge = new TaskBridge(agora);
   const artifactBridge = new ArtifactBridge(agora);
   const attentionBridge = new AttentionBridge(agora);
+  const companyBridge = new CompanyBridge(agora, {
+    ...(config.companyOrganization ? { defaultOrganization: config.companyOrganization } : {}),
+  });
+  const executiveAssistantBridge = new ExecutiveAssistantBridge(agora, {
+    ...(config.companyOrganization ? { defaultOrganization: config.companyOrganization } : {}),
+    defaultProjectId: config.nodeId,
+  });
 
   // v0.3.1 — war-room post-mortem: for each SSE tick on a known task,
   // pulls the task record and posts a one-shot summary back to the room
@@ -294,6 +303,29 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       }
       case 'brain': {
         const reply = await attentionBridge.search(projectId, decision.args.join(' '));
+        await matrix.sendText(input.roomId, reply);
+        return;
+      }
+      case 'company': {
+        const reply = decision.subVerb === 'list'
+          ? await companyBridge.list()
+          : await companyBridge.show(decision.args[0]);
+        await matrix.sendText(input.roomId, reply);
+        return;
+      }
+      case 'assistant': {
+        let reply: string;
+        if (decision.subVerb === 'ask') {
+          reply = await executiveAssistantBridge.ask(decision.args, input.senderMxid);
+        } else if (decision.subVerb === 'inbox') {
+          reply = await executiveAssistantBridge.inbox(decision.args);
+        } else if (decision.subVerb === 'commitments') {
+          reply = await executiveAssistantBridge.commitments(decision.args);
+        } else if (decision.subVerb === 'show') {
+          reply = await executiveAssistantBridge.show(decision.args);
+        } else {
+          reply = await executiveAssistantBridge.reconcile(decision.args);
+        }
         await matrix.sendText(input.roomId, reply);
         return;
       }
@@ -637,7 +669,15 @@ export {
 export { MatrixJsSdkSpaceTransport, type MatrixJsSdkSpaceTransportOptions } from './transport/space-transport.js';
 export { MatrixSpaceAdapter, DEFAULT_SPACE_CONFIG, type SpaceChild, type SpaceRef, type SpaceEvent, type SpaceEventHandler, type SpaceConfig, type MatrixSpaceTransport } from './space-adapter.js';
 export { type ThreadBinding, ThreadRegistry, buildThreadKey } from './thread-registry.js';
-export { CitizenBridge, DispatchBridge, TaskBridge, ArtifactBridge, AttentionBridge } from './bridges.js';
+export {
+  CitizenBridge,
+  DispatchBridge,
+  TaskBridge,
+  ArtifactBridge,
+  AttentionBridge,
+  CompanyBridge,
+  ExecutiveAssistantBridge,
+} from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
 export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundaryKind } from './security-domain.js';
 export { WindowsSapiSpeechAdapter, readWavDurationMs, type SpeechSynthesizer, type SynthesizedSpeech } from './speech-synthesis.js';

@@ -17,9 +17,14 @@
 
 import {
   AgoraRestClient,
+  type CommitmentRecord,
   type CitizenRecord,
   type CreateTaskInput,
   type CreateTaskResponse,
+  type ExecutiveAssistantResult,
+  type ExecutiveRequestRecord,
+  type ExecutiveRequestStatus,
+  type OrganizationSnapshot,
   type ProjectContextRetrieveResponse,
   type TaskRecord,
 } from './agora-rest.js';
@@ -182,4 +187,236 @@ export class AttentionBridge {
       .join('\n');
     return `brain search top ${hits.length} for "${query}":\n${body}`;
   }
+}
+
+export interface CompanyBridgeOptions {
+  defaultOrganization?: string;
+}
+
+export class CompanyBridge {
+  constructor(
+    private readonly agora: AgoraRestClient,
+    private readonly opts: CompanyBridgeOptions = {},
+  ) {}
+
+  async list(): Promise<string> {
+    const organizations = await this.agora.listOrganizations();
+    if (organizations.length === 0) return 'No organizations configured in Core.';
+    const lines = organizations.map((organization) =>
+      `- **${organization.name}** (\`${organization.slug}\`, ${organization.status}) — ${organization.informationDomain}`,
+    );
+    return `Organizations (${organizations.length}):\n${lines.join('\n')}`;
+  }
+
+  async show(organizationRef?: string): Promise<string> {
+    const ref = organizationRef?.trim() || this.opts.defaultOrganization?.trim();
+    if (!ref) return this.list();
+    const snapshot = await this.agora.getOrganization(ref);
+    return renderOrganizationSnapshot(snapshot);
+  }
+}
+
+function renderOrganizationSnapshot(snapshot: OrganizationSnapshot): string {
+  const { organization, units, positions, employments } = snapshot;
+  const currentEmployment = new Map(
+    employments
+      .filter((employment) => employment.status !== 'ended')
+      .map((employment) => [employment.positionId, employment]),
+  );
+  const lines = [
+    `**${organization.name}** (\`${organization.slug}\`)`,
+    `domain: ${organization.informationDomain}`,
+    `purpose: ${organization.purpose ?? '—'}`,
+  ];
+  if (units.length === 0) return [...lines, 'units: —'].join('\n');
+  lines.push('organization:');
+  for (const unit of units) {
+    const parent = unit.parentUnitId ? `, parent=${unit.parentUnitId}` : '';
+    lines.push(`- **${unit.name}** (${unit.kind}${parent})`);
+    const unitPositions = positions.filter((position) => position.unitId === unit.id);
+    for (const position of unitPositions) {
+      const employment = currentEmployment.get(position.id);
+      const occupant = employment
+        ? `${employment.employmentKind} ${employment.subjectRef} [${employment.status}]`
+        : 'vacant';
+      lines.push(`  - ${position.title} (\`${position.id}\`, ${position.kind}) — ${occupant}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+export interface ExecutiveAssistantBridgeOptions {
+  defaultOrganization?: string;
+  defaultProjectId?: string;
+}
+
+interface AssistantAskOptions {
+  organizationRef?: string;
+  capabilities: string[];
+  taskType: string;
+  priority: 'low' | 'normal' | 'high';
+  dueAt?: string;
+  targetPositionId?: string;
+  prompt: string;
+}
+
+function optionValue(args: string[], index: number, name: string): string {
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
+  return value;
+}
+
+function parseAssistantAsk(args: string[]): AssistantAskOptions {
+  let organizationRef: string | undefined;
+  const capabilities: string[] = [];
+  let taskType = 'quick';
+  let priority: 'low' | 'normal' | 'high' = 'normal';
+  let dueAt: string | undefined;
+  let targetPositionId: string | undefined;
+  const prompt: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (!arg.startsWith('--')) {
+      prompt.push(arg);
+      continue;
+    }
+    const value = optionValue(args, index, arg);
+    index += 1;
+    if (arg === '--org') organizationRef = value;
+    else if (arg === '--capability') capabilities.push(...value.split(',').map((item) => item.trim()).filter(Boolean));
+    else if (arg === '--type') taskType = value;
+    else if (arg === '--priority') {
+      if (!['low', 'normal', 'high'].includes(value)) throw new Error('--priority must be low, normal, or high');
+      priority = value as 'low' | 'normal' | 'high';
+    } else if (arg === '--due') dueAt = value;
+    else if (arg === '--target') targetPositionId = value;
+    else throw new Error(`unknown assistant option: ${arg}`);
+  }
+  const body = prompt.join(' ').trim();
+  if (!body) throw new Error('assistant ask requires a non-empty request');
+  return {
+    capabilities: [...new Set(capabilities)],
+    taskType,
+    priority,
+    prompt: body,
+    ...(organizationRef ? { organizationRef } : {}),
+    ...(dueAt ? { dueAt } : {}),
+    ...(targetPositionId ? { targetPositionId } : {}),
+  };
+}
+
+function extractOrganizationOption(args: string[]): { organizationRef?: string; rest: string[] } {
+  const rest: string[] = [];
+  let organizationRef: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (arg === '--org') {
+      organizationRef = optionValue(args, index, arg);
+      index += 1;
+    } else {
+      rest.push(arg);
+    }
+  }
+  return { rest, ...(organizationRef ? { organizationRef } : {}) };
+}
+
+export class ExecutiveAssistantBridge {
+  constructor(
+    private readonly agora: AgoraRestClient,
+    private readonly opts: ExecutiveAssistantBridgeOptions = {},
+  ) {}
+
+  private async organizationId(override?: string): Promise<string> {
+    const ref = override?.trim() || this.opts.defaultOrganization?.trim();
+    if (!ref) throw new Error('no default organization configured; pass --org <id-or-slug>');
+    const snapshot = await this.agora.getOrganization(ref);
+    return snapshot.organization.id;
+  }
+
+  async ask(args: string[], requestedBy: string): Promise<string> {
+    const parsed = parseAssistantAsk(args);
+    const organizationId = await this.organizationId(parsed.organizationRef);
+    const result = await this.agora.createExecutiveRequest(organizationId, {
+      requested_by: requestedBy,
+      title: parsed.prompt.length > 80 ? `${parsed.prompt.slice(0, 77)}...` : parsed.prompt,
+      body: parsed.prompt,
+      priority: parsed.priority,
+      requested_capabilities: parsed.capabilities,
+      task_type: parsed.taskType,
+      project_id: this.opts.defaultProjectId ?? null,
+      ...(parsed.dueAt ? { due_at: parsed.dueAt } : {}),
+      ...(parsed.targetPositionId ? { target_position_id: parsed.targetPositionId } : {}),
+    });
+    return renderExecutiveResult(result);
+  }
+
+  async inbox(args: string[]): Promise<string> {
+    const parsed = extractOrganizationOption(args);
+    const status = parsed.rest[0] as ExecutiveRequestStatus | undefined;
+    if (status && !['received', 'triage', 'delegated', 'blocked', 'completed', 'cancelled'].includes(status)) {
+      throw new Error(`invalid assistant request status: ${status}`);
+    }
+    const organizationId = await this.organizationId(parsed.organizationRef);
+    const requests = await this.agora.listExecutiveInbox(organizationId, status);
+    if (requests.length === 0) return 'Assistant inbox is empty.';
+    return `Assistant inbox (${requests.length}):\n${requests.map(renderExecutiveRequestLine).join('\n')}`;
+  }
+
+  async commitments(args: string[]): Promise<string> {
+    const parsed = extractOrganizationOption(args);
+    if (parsed.rest.length > 0) throw new Error('assistant commitments accepts only --org <id-or-slug>');
+    const organizationId = await this.organizationId(parsed.organizationRef);
+    const commitments = await this.agora.listCommitments(organizationId);
+    if (commitments.length === 0) return 'Commitment ledger is empty.';
+    return `Commitments (${commitments.length}):\n${commitments.map(renderCommitmentLine).join('\n')}`;
+  }
+
+  async show(args: string[]): Promise<string> {
+    const parsed = extractOrganizationOption(args);
+    const requestId = parsed.rest[0];
+    if (!requestId) throw new Error('assistant show requires a request id');
+    const organizationId = await this.organizationId(parsed.organizationRef);
+    const request = await this.agora.getExecutiveRequest(organizationId, requestId);
+    return renderExecutiveRequest(request);
+  }
+
+  async reconcile(args: string[]): Promise<string> {
+    const parsed = extractOrganizationOption(args);
+    const requestId = parsed.rest[0];
+    if (!requestId) throw new Error('assistant reconcile requires a request id');
+    const organizationId = await this.organizationId(parsed.organizationRef);
+    const result = await this.agora.reconcileExecutiveRequest(organizationId, requestId, parsed.rest.slice(1));
+    return renderExecutiveResult(result);
+  }
+}
+
+function renderExecutiveResult(result: ExecutiveAssistantResult): string {
+  const request = result.request;
+  const lines = [
+    `Assistant request \`${request.id}\` — ${request.status}`,
+    `task: ${request.taskId ? `\`${request.taskId}\`` : '—'}`,
+    `position: ${request.assignedPositionId ? `\`${request.assignedPositionId}\`` : '—'}`,
+    `commitment: ${result.commitment ? `\`${result.commitment.id}\` (${result.commitment.status})` : '—'}`,
+  ];
+  if (request.blockedReason) lines.push(`blocked: ${request.blockedReason}`);
+  return lines.join('\n');
+}
+
+function renderExecutiveRequestLine(request: ExecutiveRequestRecord): string {
+  return `- \`${request.id}\` [${request.status}/${request.priority}] ${request.title} — task=${request.taskId ?? '—'}`;
+}
+
+function renderCommitmentLine(commitment: CommitmentRecord): string {
+  return `- \`${commitment.id}\` [${commitment.status}] ${commitment.summary} — task=${commitment.taskId}`;
+}
+
+function renderExecutiveRequest(request: ExecutiveRequestRecord): string {
+  return [
+    `Assistant request \`${request.id}\` — ${request.status}`,
+    `title: ${request.title}`,
+    `priority: ${request.priority}`,
+    `capabilities: ${request.requestedCapabilities.length > 0 ? request.requestedCapabilities.join(', ') : '—'}`,
+    `task: ${request.taskId ?? '—'}`,
+    `blocked: ${request.blockedReason ?? '—'}`,
+  ].join('\n');
 }

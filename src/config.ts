@@ -25,6 +25,8 @@ export interface MatrixConnectorConfig {
   agoraApiToken: string;
   /** Optional node id this connector is bound to (defaults to hostname()). */
   nodeId?: string;
+  /** Default Core organization id/slug used by company and assistant commands. */
+  companyOrganization?: string;
 
   /** Outbound HTTP request timeout (ms). */
   requestTimeoutMs?: number;
@@ -82,12 +84,14 @@ export type ProjectId = string;
 
 export type ResolvedMatrixConnectorConfig = Required<Omit<MatrixConnectorConfig,
   | 'nodeId'
+  | 'companyOrganization'
   | 'spaces'
   | 'securityBoundary'
   | 'speech'
   | 'initiativeDelivery'
 >> & {
   nodeId: string;
+  companyOrganization?: string;
   spaces?: NonNullable<MatrixConnectorConfig['spaces']>;
   securityBoundary?: SecurityDomainConfig;
   speech?: NonNullable<MatrixConnectorConfig['speech']>;
@@ -103,6 +107,9 @@ export function buildConfig(input: MatrixConnectorConfig): ResolvedMatrixConnect
     agoraServerUrl: input.agoraServerUrl,
     agoraApiToken: input.agoraApiToken,
     nodeId: input.nodeId ?? 'node-a',
+    ...(input.companyOrganization !== undefined
+      ? { companyOrganization: input.companyOrganization }
+      : {}),
     requestTimeoutMs: input.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     commandName: input.commandName ?? DEFAULT_COMMAND_NAME,
     nodeEnabled: input.nodeEnabled ?? true,
