@@ -286,7 +286,7 @@ test('plugin: /agora help sends help text', async (t) => {
   assert.match(matrix.sent[0].body, /\/agora citizen/);
 });
 
-test('plugin: unknown command returns error message', async (t) => {
+test('plugin: unknown explicit command returns error message', async (t) => {
   const ctx = makeContext();
   t.after(() => ctx.cleanup());
   const matrix = makeMatrixStub();
@@ -299,9 +299,26 @@ test('plugin: unknown command returns error message', async (t) => {
     matrixClient: matrix.client, agora, context: ctx.context,
   });
   await plugin.apply(ctx.context);
-  emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: 'hello world' });
+  emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: '/agora nope' });
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(matrix.sent[0].body, /unknown command/);
+});
+
+test('plugin: ordinary room conversation is ignored', async (t) => {
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  const matrix = makeMatrixStub();
+  const plugin = createMatrixConnectorPlugin({
+    config: {
+      homeserverUrl: 'http://hs', userId: '@b:hs', accessToken: 'tok', deviceId: 'd',
+      agoraServerUrl: 'http://agora', agoraApiToken: 'atok', nodeId: 'node-a',
+    },
+    matrixClient: matrix.client, agora: makeAgoraStub(), context: ctx.context,
+  });
+  await plugin.apply(ctx.context);
+  emit(ctx, 'matrix.room.message', { roomId: '!room:hs', senderMxid: '@u:hs', body: 'hello world' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(matrix.sent.length, 0);
 });
 
 test('plugin: organization intake does not reuse nodeId as projectId', async (t) => {

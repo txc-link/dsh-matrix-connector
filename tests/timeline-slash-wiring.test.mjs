@@ -171,7 +171,7 @@ test('timeline: plain /agora help message reaches the slash router and gets a re
   ctx.cleanup();
 });
 
-test('timeline: unknown non-reply message is routed (renderError reply), not dropped', async () => {
+test('timeline: unknown explicit command is routed to an error receipt', async () => {
   const harness = makeHarness();
   const ctx = buildPlugin(harness, makeContext());
   const handler = harness.timelineHandler();
@@ -181,11 +181,29 @@ test('timeline: unknown non-reply message is routed (renderError reply), not dro
     eventId: 'evt_in_2',
     sender: '@alice:agent-hub.local',
     type: 'm.room.message',
+    body: '/agora nope',
+  });
+  await tick();
+
+  assert.match(harness.sent[0].body, /unknown command/);
+  ctx.cleanup();
+});
+
+test('timeline: ordinary room conversation is ignored by the command router', async () => {
+  const harness = makeHarness();
+  const ctx = buildPlugin(harness, makeContext());
+  const handler = harness.timelineHandler();
+
+  handler({
+    roomId: ROOM,
+    eventId: 'evt_ordinary',
+    sender: '@alice:agent-hub.local',
+    type: 'm.room.message',
     body: 'hello world',
   });
   await tick();
 
-  assert.ok(harness.sent.length >= 1, 'non-reply messages must hit the slash router path');
+  assert.equal(harness.sent.length, 0);
   ctx.cleanup();
 });
 

@@ -21,7 +21,13 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.2 — reliable Executive Assistant intake
+## Status: v0.3.3 — safe team-room command routing
+
+v0.3.3 only sends explicit `/agora` messages through the command router.
+Ordinary room conversation is left untouched, so the connector can remain in
+team discussion rooms without replying with `unknown command` to every post.
+
+## v0.3.2 — reliable Executive Assistant intake
 
 v0.3.2 keeps runtime node identity separate from the optional Core Project
 identity, normalizes `--due` values with explicit timezone offsets, and returns

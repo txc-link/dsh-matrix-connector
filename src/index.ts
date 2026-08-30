@@ -464,8 +464,10 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       }
 
       ctx.on('matrix.room.message', ((msg: unknown) => {
+        const message = msg as { roomId: string; senderMxid: string; body: string };
+        if (!isCommandMessage(message.body, { commandName: config.commandName })) return;
         void handleRoomMessageSafely(
-          msg as { roomId: string; senderMxid: string; body: string },
+          message,
           'cordis',
         );
       }) as (...args: unknown[]) => void);
@@ -516,6 +518,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           });
           return;
         }
+        if (!isCommandMessage(evt.body ?? '', { commandName: config.commandName })) return;
         void handleRoomMessageSafely({
           roomId: evt.roomId,
           senderMxid: evt.sender,
