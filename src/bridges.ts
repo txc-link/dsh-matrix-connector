@@ -145,14 +145,12 @@ export class TaskBridge {
 
   async listArtifactsFor(taskId: string): Promise<string> {
     const detail: TaskRecord = await this.agora.getTask(taskId);
-    const artifacts = detail['artifacts'];
-    if (!Array.isArray(artifacts) || artifacts.length === 0) {
+    const artifacts = await this.agora.listArtifacts('task', detail.id);
+    if (artifacts.length === 0) {
       return `task \`${detail.id}\` has no artifacts yet.`;
     }
     const body = artifacts
-      .map((a: { artifact_id?: string; name?: string; media_type?: string; size_bytes?: number }) =>
-        `- \`${a.artifact_id ?? '?'}\`  ${a.name ?? '?'} (${a.media_type ?? '?'}, ${a.size_bytes ?? '?'} bytes)`,
-      )
+      .map(a => `- \`${a.id}\`  ${a.name} (${a.media_type}, ${a.size_bytes} bytes)`)
       .join('\n');
     return `artifacts for task \`${detail.id}\`:\n${body}`;
   }

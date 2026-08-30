@@ -35,7 +35,7 @@ function makeAgora(overrides = {}) {
     searchBrain: async (_pid, query) => overrides.brainHits ?? [
       { reference_key: 'doc:design', kind: 'doc', slug: 'design', score: 0.93, excerpt: query },
     ],
-    listArtifacts: async () => [],
+    listArtifacts: async () => overrides.artifacts ?? [],
     getArtifact: async () => ({}),
     getArtifactContent: async (id) => ({ artifact_id: id, bytes: new Uint8Array([1, 2, 3]), media_type: 'text/plain', name: 'a.txt' }),
     listCitizens: async (_projectId) => overrides.citizens ?? [
@@ -167,6 +167,28 @@ test('TaskBridge.show: shows id + state + creator + type', async () => {
   assert.match(out, /stage=execute/);
   assert.match(out, /creator: @u:hs/);
   assert.match(out, /type: quick/);
+});
+
+test('TaskBridge.listArtifactsFor queries durable artifacts by task ownership', async () => {
+  const calls = [];
+  const bridge = new TaskBridge(makeAgora({
+    agora: {
+      listArtifacts: async (...args) => {
+        calls.push(args);
+        return [{
+          id: 'artifact-1', name: 'deliverable.md', kind: 'executive_deliverable',
+          media_type: 'text/markdown', size_bytes: 42, sha256: 'abc',
+          owner_kind: 'task', owner_ref: 'task-1',
+        }];
+      },
+    },
+  }));
+
+  const out = await bridge.listArtifactsFor('task-1');
+
+  assert.deepEqual(calls, [['task', 'task-1']]);
+  assert.match(out, /artifact-1/);
+  assert.match(out, /deliverable\.md/);
 });
 
 test('ArtifactBridge.fetchBytes: returns bytes + media + name', async () => {

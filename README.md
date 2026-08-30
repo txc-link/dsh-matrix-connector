@@ -21,7 +21,13 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.3 — safe team-room command routing
+## Status: v0.3.4 — durable task artifact lookup
+
+v0.3.4 makes `/agora task <id> artifacts` query the Core Artifact collection by
+`owner_kind=task&owner_ref=<id>` instead of assuming artifacts are embedded in
+the task record.
+
+## v0.3.3 — safe team-room command routing
 
 v0.3.3 only sends explicit `/agora` messages through the command router.
 Ordinary room conversation is left untouched, so the connector can remain in

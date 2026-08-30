@@ -173,6 +173,19 @@ test('agora-rest: getArtifactContent returns bytes via arrayBuffer', async () =>
   assert.equal(new TextDecoder().decode(c.bytes), 'plain bytes');
 });
 
+test('agora-rest: listArtifacts encodes optional owner filters', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, () => okJson({ artifacts: [] }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+
+  await client.listArtifacts('task', 'OC-1/with space');
+
+  const url = new URL(captured[0].url);
+  assert.equal(url.pathname, '/api/artifacts');
+  assert.equal(url.searchParams.get('owner_kind'), 'task');
+  assert.equal(url.searchParams.get('owner_ref'), 'OC-1/with space');
+});
+
 test('agora-rest: searchBrain POSTs context/retrieve with the v0.6.0 shape', async () => {
   const captured = [];
   const fetchImpl = makeFetch(captured, () => okJson({

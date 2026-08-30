@@ -547,8 +547,12 @@ export class AgoraRestClient {
     return response.results.hits;
   }
 
-  async listArtifacts(): Promise<ArtifactRecord[]> {
-    const response = await this.request<{ artifacts: ArtifactRecord[] }>('GET', '/api/artifacts');
+  async listArtifacts(ownerKind?: string, ownerRef?: string): Promise<ArtifactRecord[]> {
+    const params = new URLSearchParams();
+    if (ownerKind) params.set('owner_kind', ownerKind);
+    if (ownerRef) params.set('owner_ref', ownerRef);
+    const query = params.size > 0 ? `?${params.toString()}` : '';
+    const response = await this.request<{ artifacts: ArtifactRecord[] }>('GET', `/api/artifacts${query}`);
     return response.artifacts;
   }
 
