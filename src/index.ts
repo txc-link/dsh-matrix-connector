@@ -42,6 +42,7 @@ import type { MatrixTimelineEvent } from './matrix-client.js';
 import { SecurityDomainBoundary } from './security-domain.js';
 import { WindowsSapiSpeechAdapter, type SpeechSynthesizer } from './speech-synthesis.js';
 import { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
+import { isMatrixSenderAllowed } from './sender-authorization.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -89,6 +90,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       if (oldest !== undefined) claimedMatrixEventIds.delete(oldest);
     }
     return true;
+  };
+  const authorizeMatrixSender = (senderMxid: string, roomId: string): boolean => {
+    if (isMatrixSenderAllowed(senderMxid, config.allowFrom)) return true;
+    opts.context.logger(`matrix inbound denied by allowFrom: sender=${senderMxid} room=${roomId}`);
+    return false;
   };
   const securityBoundary = config.securityBoundary
     ? new SecurityDomainBoundary(config.securityBoundary)
@@ -251,6 +257,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     senderMxid: string;
     body: string;
   }): Promise<void> {
+    if (!authorizeMatrixSender(input.senderMxid, input.roomId)) return;
     if (securityBoundary) {
       const local = securityBoundary.authorizeRoomProjection(securityBoundary.domainRef, input.roomId);
       if (!local.allowed) {
@@ -509,6 +516,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
       matrix.onTimelineEvent((evt: MatrixTimelineEvent) => {
         if (evt.type !== 'm.room.message') return;
         if (evt.isOwn) return;
+        if (!authorizeMatrixSender(evt.sender, evt.roomId)) return;
         if (!claimMatrixEvent(evt.eventId)) return;
         if (evt.relatesTo?.inReplyTo?.eventId) {
           void ingestMatrixReply({
@@ -576,6 +584,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
                 return;
               }
               if (evt.sender === config.userId) return;
+              if (!authorizeMatrixSender(evt.sender, evt.childRoomId)) return;
               if (!claimMatrixEvent(evt.eventId)) return;
               // matrix-js-sdk versions differ in whether Room.timeline is
               // surfaced on the client, the Room object, or both. Space child
@@ -763,6 +772,7 @@ export type {
   ProvisionTaskRoomResult,
 } from './room-provisioner.js';
 export { ingestMatrixReply, type MatrixReplyEvent, type IngestMatrixReplyOptions } from './reply-ingest.js';
+export { isMatrixSenderAllowed } from './sender-authorization.js';
 
 // ── Cordis 顶层入口 ─────────────────────────────────────────────────────
 // npm 直装时 loader 约定: 模块顶层必须导出 { apply, name, inject }。
@@ -801,6 +811,7 @@ export async function apply(ctx: CordisContext, config?: Partial<MatrixConnector
   const agora = new AgoraRestClient({
     baseUrl: resolved.agoraServerUrl,
     apiToken: resolved.agoraApiToken,
+    timeoutMs: resolved.requestTimeoutMs,
   });
   const plugin = createMatrixConnectorPlugin({
     config: resolved,

@@ -1,6 +1,6 @@
 {
   "name": "dsh-matrix-connector",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "DSH-native Matrix IM entry adapter for Agora governance — second IM implementation alongside cc-connect",
   "private": false,
   "type": "module",
@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",
     "smoke:matrix": "node tests/smoke-matrix.mjs"

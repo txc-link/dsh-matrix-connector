@@ -104,7 +104,7 @@ function makeWiringHarness() {
   };
 }
 
-function buildPlugin(harness, ctx) {
+function buildPlugin(harness, ctx, configOverrides = {}) {
   const plugin = createMatrixConnectorPlugin({
     config: {
       homeserverUrl: 'http://hs:8008',
@@ -117,6 +117,7 @@ function buildPlugin(harness, ctx) {
       requestTimeoutMs: 10000,
       autoJoin: true,
       eventPollIntervalMs: 5000,
+      ...configOverrides,
     },
     matrixClient: harness.client,
     agora: harness.agora,
@@ -208,5 +209,42 @@ test('reply-wiring: own sender (transport isOwn) never ingests even in bound roo
     isOwn: true,
   });
   await tick();
+  assert.equal(harness.replied.length, 0);
+});
+
+test('reply-wiring: allowFrom protects both host commands and timeline replies', async (t) => {
+  const harness = makeWiringHarness();
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  buildPlugin(harness, ctx, { allowFrom: '@alice:agent-hub.local' });
+
+  // The host event path must not let an unauthorized sender create/bind a task.
+  ctx.emit('matrix.room.message', {
+    roomId: '!denied:agent-hub.local',
+    senderMxid: '@mallory:agent-hub.local',
+    body: '/agora dispatch unauthorized work',
+  });
+  await tick();
+  assert.equal(harness.sent.length, 0);
+
+  // Bind another room as an authorized sender, then reject Mallory's reply.
+  ctx.emit('matrix.room.message', {
+    roomId: '!allowed:agent-hub.local',
+    senderMxid: '@alice:agent-hub.local',
+    body: '/agora dispatch authorized work',
+  });
+  await tick();
+  assert.ok(harness.sent.length >= 1, 'authorized dispatch binds the room');
+
+  await harness.timelineHandler()({
+    roomId: '!allowed:agent-hub.local',
+    eventId: '$evt-denied-reply',
+    sender: '@mallory:agent-hub.local',
+    type: 'm.room.message',
+    body: 'unauthorized reply',
+    relatesTo: { inReplyTo: { eventId: '$evt-orig' } },
+  });
+  await tick();
+
   assert.equal(harness.replied.length, 0);
 });

@@ -160,6 +160,11 @@ companyOrganization: 'my-company'
 companyProjectId: 'optional-core-project-id'
 ```
 
+`allowFrom` controls every inbound command and reply. Use `*` to allow all
+room members, or a comma-separated list of exact Matrix user IDs such as
+`@alice:example.org,@bob:example.org`. An explicitly empty value denies all
+senders.
+
 Protected companion instance example (use a dedicated bot credential, never
 the Company bot):
 

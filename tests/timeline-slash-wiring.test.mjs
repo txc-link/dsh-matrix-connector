@@ -124,7 +124,7 @@ function makeHarness() {
   };
 }
 
-function buildPlugin(harness, ctx) {
+function buildPlugin(harness, ctx, configOverrides = {}) {
   const plugin = createMatrixConnectorPlugin({
     config: {
       homeserverUrl: 'http://hs:8008',
@@ -138,6 +138,7 @@ function buildPlugin(harness, ctx) {
       requestTimeoutMs: 10000,
       autoJoin: true,
       eventPollIntervalMs: 5000,
+      ...configOverrides,
     },
     matrixClient: harness.client,
     agora: harness.agora,
@@ -200,6 +201,25 @@ test('timeline: ordinary room conversation is ignored by the command router', as
     sender: '@alice:agent-hub.local',
     type: 'm.room.message',
     body: 'hello world',
+  });
+  await tick();
+
+  assert.equal(harness.sent.length, 0);
+  ctx.cleanup();
+});
+
+test('timeline: allowFrom rejects slash commands from an unauthorized sender', async () => {
+  const harness = makeHarness();
+  const ctx = buildPlugin(harness, makeContext(), {
+    allowFrom: '@alice:agent-hub.local',
+  });
+
+  harness.timelineHandler()({
+    roomId: ROOM,
+    eventId: 'evt_denied',
+    sender: '@mallory:agent-hub.local',
+    type: 'm.room.message',
+    body: '/agora help',
   });
   await tick();
 
