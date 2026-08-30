@@ -13,11 +13,19 @@ import { MatrixJsSdkTransport } from '../lib/transport/matrix-js-sdk.js';
 
 test('matrix-js-sdk-transport: default Node transport leaves E2EE disabled and starts sync', async () => {
   const calls = { start: [], crypto: [], stop: 0, listeners: [], order: [] };
+  const listeners = new Map();
   const sdk = {
-    startClient: async (options) => { calls.start.push(options); calls.order.push('start'); },
+    startClient: async (options) => {
+      calls.start.push(options);
+      calls.order.push('start');
+      listeners.get('sync')?.('PREPARED', null);
+    },
     initRustCrypto: async (options) => { calls.crypto.push(options); calls.order.push('crypto'); },
     stopClient: async () => { calls.stop += 1; },
-    on: (event) => { calls.listeners.push(event); },
+    on: (event, handler) => { calls.listeners.push(event); listeners.set(event, handler); },
+    removeListener: (event, handler) => {
+      if (listeners.get(event) === handler) listeners.delete(event);
+    },
   };
   const transport = new MatrixJsSdkTransport(
     {
@@ -26,7 +34,7 @@ test('matrix-js-sdk-transport: default Node transport leaves E2EE disabled and s
       userId: '@test:agent-hub.local',
       deviceId: 'DEVICE',
     },
-    { createClient: () => sdk },
+    { createClient: () => sdk, initialSyncTimeoutMs: 50 },
   );
 
   await transport.connect();
@@ -40,6 +48,37 @@ test('matrix-js-sdk-transport: default Node transport leaves E2EE disabled and s
   await transport.stopSync();
   assert.equal(calls.stop, 1);
   assert.equal(transport.isConnected(), false);
+});
+
+test('matrix-js-sdk-transport: connect waits for initial sync before exposing rooms', async () => {
+  const listeners = new Map();
+  let roomCacheReady = false;
+  const sdk = {
+    startClient: async () => {
+      setTimeout(() => {
+        roomCacheReady = true;
+        listeners.get('sync')?.('PREPARED', null);
+      }, 5);
+    },
+    stopClient: async () => undefined,
+    on: (event, handler) => { listeners.set(event, handler); },
+    removeListener: (event, handler) => {
+      if (listeners.get(event) === handler) listeners.delete(event);
+    },
+  };
+  const transport = new MatrixJsSdkTransport(
+    {
+      homeserverUrl: 'http://homeserver.test',
+      accessToken: 'syt_dummy',
+      userId: '@test:agent-hub.local',
+    },
+    { createClient: () => sdk, initialSyncTimeoutMs: 100 },
+  );
+
+  await transport.connect();
+
+  assert.equal(roomCacheReady, true);
+  assert.equal(transport.isConnected(), true);
 });
 
 test('matrix-js-sdk-transport: not-connected methods throw clear errors', async () => {

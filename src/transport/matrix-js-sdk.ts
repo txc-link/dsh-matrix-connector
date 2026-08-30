@@ -23,7 +23,16 @@
  * implemented and recovery-tested.
  */
 
-import { createClient, type MatrixClient as SdkMatrixClient, type Visibility, type Preset, type Room, type MatrixEvent } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  SyncState,
+  createClient,
+  type MatrixClient as SdkMatrixClient,
+  type Visibility,
+  type Preset,
+  type Room,
+  type MatrixEvent,
+} from 'matrix-js-sdk';
 import type {
   MatrixRoomMessage,
   MatrixSendReceipt,
@@ -42,6 +51,8 @@ export interface MatrixJsSdkTransportOptions {
 
 export interface MatrixJsSdkTransportInternals {
   readonly createClient?: typeof createClient;
+  /** Bound startup wait; mainly configurable so lifecycle tests stay fast. */
+  readonly initialSyncTimeoutMs?: number;
 }
 
 export interface CreateRoomOptions {
@@ -59,12 +70,14 @@ export class MatrixJsSdkTransport implements MatrixTransport {
   private sdk: SdkMatrixClient | null = null;
   private connected = false;
   private readonly createSdkClient: typeof createClient;
+  private readonly initialSyncTimeoutMs: number;
 
   public constructor(
     private readonly opts: MatrixJsSdkTransportOptions,
     internals: MatrixJsSdkTransportInternals = {},
   ) {
     this.createSdkClient = internals.createClient ?? createClient;
+    this.initialSyncTimeoutMs = internals.initialSyncTimeoutMs ?? 15_000;
   }
 
   public async connect(): Promise<void> {
@@ -75,13 +88,59 @@ export class MatrixJsSdkTransport implements MatrixTransport {
       userId: this.opts.userId,
       ...(this.opts.deviceId !== undefined ? { deviceId: this.opts.deviceId } : {}),
     });
-    // Do not initialize Rust crypto with an in-memory store. Doing so under a
-    // stable device id generates fresh one-time keys after restart, which the
-    // homeserver correctly rejects as conflicting device state.
-    await sdk.startClient({ initialSyncLimit: 0 });
+    // Publish the SDK before starting sync so invite listeners are present for
+    // the initial response. Space discovery also needs the first sync to have
+    // populated the Room/currentState cache before plugin composition runs.
     this.sdk = sdk;
-    this.connected = true;
     this.attachInviteListener();
+    const initialSync = this.waitForInitialSync(sdk);
+    try {
+      // Do not initialize Rust crypto with an in-memory store. Doing so under a
+      // stable device id generates fresh one-time keys after restart, which the
+      // homeserver correctly rejects as conflicting device state.
+      await sdk.startClient({ initialSyncLimit: 0 });
+      await initialSync;
+      this.connected = true;
+    } catch (error) {
+      try {
+        await Promise.resolve(sdk.stopClient());
+      } catch {
+        // Preserve the original start failure; shutdown is best-effort here.
+      }
+      this.sdk = null;
+      this.inviteListenerAttached = false;
+      throw error;
+    }
+  }
+
+  /**
+   * Wait until the first /sync has populated the SDK room cache. A bounded
+   * timeout preserves the old degraded-start behaviour when Matrix is slow;
+   * joined-room commands still work once the background sync recovers.
+   */
+  private waitForInitialSync(sdk: SdkMatrixClient): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        sdk.removeListener(ClientEvent.Sync, onSync);
+        resolve();
+      };
+      const onSync = (state: SyncState): void => {
+        if (
+          state === SyncState.Prepared
+          || state === SyncState.Syncing
+          || state === SyncState.Error
+          || state === SyncState.Stopped
+        ) {
+          finish();
+        }
+      };
+      const timer = setTimeout(finish, this.initialSyncTimeoutMs);
+      sdk.on(ClientEvent.Sync, onSync);
+    });
   }
 
   public isConnected(): boolean {

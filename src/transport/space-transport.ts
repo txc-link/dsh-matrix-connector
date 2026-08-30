@@ -169,9 +169,12 @@ export class MatrixJsSdkSpaceTransport implements MatrixSpaceTransport {
       });
       activeChildIds.add(childRoomId);
     };
-    room.on(RoomStateEvent.Events as never, onStateEvent as never);
+    // RoomStateEvent.Events belongs to Room.currentState, not Room. Listening
+    // on Room made production child additions invisible even though permissive
+    // test doubles accepted the registration.
+    room.currentState.on(RoomStateEvent.Events as never, onStateEvent as never);
     disposers.push(() => {
-      room.removeListener(RoomStateEvent.Events as never, onStateEvent as never);
+      room.currentState.removeListener(RoomStateEvent.Events as never, onStateEvent as never);
     });
 
     // 2. RoomEvent.Timeline on the Space room + every known child room.

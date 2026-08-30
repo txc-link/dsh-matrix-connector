@@ -21,7 +21,14 @@ side ever has to know the other's identifier.
                                           └──────────────────────┘
 ```
 
-## Status: v0.3.5 — Element-native artifact files
+## Status: v0.3.6 — reliable Space room discovery
+
+v0.3.6 waits for the initial Matrix sync before reading the joined-room cache
+and listens for `m.space.child` changes on `Room.currentState`. Newly added
+company rooms therefore enter the configured security boundary without a DSH
+restart or a manual `allowedRoomIds` entry.
+
+## v0.3.5 — Element-native artifact files
 
 v0.3.5 sends `/agora artifact <id>` results as standard Matrix `m.file`
 messages, so Element renders a normal downloadable file card instead of a raw
