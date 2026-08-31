@@ -48,6 +48,24 @@ test('route: /agora dispatch <prompt> → dispatch / <prompt>', () => {
   assert.deepEqual(d.args, ['ask', 'REMOTE_OK']);
 });
 
+test('route: /agora say <text> → say / <text tokens>', () => {
+  const d = route('/agora say hello world');
+  assert.equal(d.verb, 'say');
+  assert.deepEqual(d.args, ['hello', 'world']);
+});
+
+test('route: /agora say empty → MISSING_ARG', () => {
+  const d = route('/agora say');
+  assert.equal(d.errorCode, 'MISSING_ARG');
+  assert.equal(d.verb, 'say');
+});
+
+test('route: /agora say preserves punctuation as separate tokens', () => {
+  const d = route('/agora say 早安, 今天天气不错');
+  assert.equal(d.verb, 'say');
+  assert.deepEqual(d.args, ['早安,', '今天天气不错']);
+});
+
 test('route: /agora dispatch empty → MISSING_ARG', () => {
   const d = route('/agora dispatch');
   assert.equal(d.errorCode, 'MISSING_ARG');

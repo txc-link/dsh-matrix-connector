@@ -453,6 +453,32 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         await matrix.sendText(input.roomId, reply);
         return;
       }
+      case 'say': {
+        // v0.6 — explicit proactive voice trigger. The slash dispatcher
+        // routes here from `/agora say <text>`. Requires voiceDelivery
+        // (security boundary + speech synthesizer + enabled config). When
+        // not configured, surface the gap explicitly rather than silently
+        // dropping the request (§1.5: no fallback paths).
+        if (!voiceDelivery) {
+          await matrix.sendText(
+            input.roomId,
+            '❌ voice not configured: set speech.enabled=true with a provider (fish-speech|windows-sapi) and a security boundary in the connector row.',
+          );
+          return;
+        }
+        const text = decision.args.join(' ').trim();
+        await voiceDelivery.deliver({
+          roomId: input.roomId,
+          text,
+          resourceRef: `agora://chat/${input.roomId}`,
+          sourceDomain: config.securityBoundary?.domainRef ?? 'unknown',
+          actorRef: config.userId,
+          subjectRef: input.senderMxid,
+          purpose: 'proactive-room-announcement',
+        });
+        await matrix.sendText(input.roomId, `🔊 voice sent (${text.length} chars)`);
+        return;
+      }
       case 'im': {
         if (decision.subVerb === 'health') {
           const h = await agora.health();

@@ -16,6 +16,7 @@ export type VerbName =
   | 'im'
   | 'rollup'
   | 'stuck'
+  | 'say'
   | 'help'
   | 'unknown';
 
@@ -159,6 +160,16 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
       // escalated via SSE inbox_escalated events in this session.
       return { verb: 'stuck', args: tail };
     }
+    case 'say': {
+      // v0.6 — `/agora say <text>` is an explicit proactive voice trigger.
+      // The bridge dispatches this to GovernedVoiceDelivery when voice
+      // delivery is wired (security boundary + speech synthesizer); otherwise
+      // it returns a clear "voice not configured" reply (never silent).
+      if (tail.length === 0) {
+        return { verb: 'say', args: [], errorCode: 'MISSING_ARG' };
+      }
+      return { verb: 'say', args: tail };
+    }
     case 'help': {
       return { verb: 'help', args: [] };
     }
@@ -198,4 +209,5 @@ export const HELP_TEXT = [
   '  /agora assistant ask [--org <id>] [--capability <skill>] <request>',
   '  /agora assistant inbox | commitments | show <request_id> | reconcile <request_id>',
   '  /agora im health | help',
+  '  /agora say <text>                    (proactive voice; needs speech config)',
 ].join('\n');
