@@ -104,6 +104,12 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
         if (tail.length < 2) return { verb: 'task', args: [], subVerb: sub, errorCode: 'MISSING_ARG' };
         return { verb: 'task', args: tail.slice(1), subVerb: sub };
       }
+      if (sub === 'transfer') {
+        // T_transfer — design-only; bridge returns an explicit
+        // "not implemented" message (see follow-up-T-transfer-design.md).
+        // The verb still needs at least the task id.
+        return { verb: 'task', args: tail.slice(1), subVerb: 'transfer' };
+      }
       // Backward compatible: `/agora task <id> [artifacts]` shows a task.
       return { verb: 'task', args: tail };
     }
@@ -240,6 +246,7 @@ export const HELP_TEXT = [
   '  /agora task resume <task_id>',
   '  /agora task cancel <task_id> [reason]',
   '  /agora task unblock <task_id> [reason]',
+  '  /agora task transfer <task_id> [reason]      (T_transfer design-only; see follow-up)',
   '  /agora artifact <artifact_id>',
   '  /agora brain search <query>',
   '  /agora company [show [organization] | list]',

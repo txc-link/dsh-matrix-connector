@@ -160,6 +160,13 @@ test('route: /agora task unblock <id> → task / unblock; legacy <id> stays show
   assert.deepEqual(show.args, ['t-1']);
 });
 
+test('route: /agora task transfer <id> [reason] → task / transfer', () => {
+  const d = route('/agora task transfer t-7 reassign to node-b');
+  assert.equal(d.verb, 'task');
+  assert.equal(d.subVerb, 'transfer');
+  assert.deepEqual(d.args, ['t-7', 'reassign', 'to', 'node-b']);
+});
+
 test('route: /agora brain search <query> → brain / search / <query>', () => {
   const d = route('/agora brain search dispatch 协议');
   assert.equal(d.verb, 'brain');

@@ -375,6 +375,18 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           await matrix.sendText(input.roomId, `✅ ${sub} ${taskId} → state=${updated.state}${stage}`);
           return;
         }
+        if (sub === 'transfer') {
+          // T_transfer — design-only; see
+          //   dsh-agora/Doc/09-PLANNING/TASKS/2026-08-31-next-batch/follow-up-T-transfer-design.md
+          // Returns an explicit "not implemented" so the gap is honest (§1.5).
+          const taskId = decision.args[0]!;
+          const reason = decision.args.slice(1).join(' ').trim();
+          await matrix.sendText(
+            input.roomId,
+            `❌ task transfer not implemented yet. design: follow-up-T-transfer-design.md (task=${taskId} reason=${reason || '-'})`,
+          );
+          return;
+        }
         const taskId = decision.args[0]!;
         const includeArtifacts = decision.args.includes('artifacts');
         const head = await taskBridge.show(taskId);
