@@ -66,6 +66,60 @@ test('route: /agora say preserves punctuation as separate tokens', () => {
   assert.deepEqual(d.args, ['早安,', '今天天气不错']);
 });
 
+test('route: /agora calendar today → calendar / today', () => {
+  const d = route('/agora calendar today');
+  assert.equal(d.verb, 'calendar');
+  assert.equal(d.subVerb, 'today');
+  assert.deepEqual(d.args, []);
+});
+
+test('route: /agora calendar morning --domain life → calendar / morning / --domain / life', () => {
+  const d = route('/agora calendar morning --domain life');
+  assert.equal(d.verb, 'calendar');
+  assert.equal(d.subVerb, 'morning');
+  assert.deepEqual(d.args, ['--domain', 'life']);
+});
+
+test('route: /agora calendar empty → MISSING_ARG with subVerb=today', () => {
+  const d = route('/agora calendar');
+  assert.equal(d.verb, 'calendar');
+  assert.equal(d.subVerb, 'today');
+  assert.equal(d.errorCode, 'MISSING_ARG');
+});
+
+test('route: /agora doc show <artifactId> → doc / show / <artifactId>', () => {
+  const d = route('/agora doc show art-123');
+  assert.equal(d.verb, 'doc');
+  assert.equal(d.subVerb, 'show');
+  assert.deepEqual(d.args, ['art-123']);
+});
+
+test('route: /agora doc edit <artifactId> with content tokens', () => {
+  const d = route('/agora doc edit art-123 # Heading');
+  assert.equal(d.verb, 'doc');
+  assert.equal(d.subVerb, 'edit');
+  assert.deepEqual(d.args, ['art-123', '#', 'Heading']);
+});
+
+test('route: /agora doc empty → MISSING_ARG', () => {
+  const d = route('/agora doc');
+  assert.equal(d.verb, 'doc');
+  assert.equal(d.errorCode, 'MISSING_ARG');
+});
+
+test('route: /agora call join [roomId] → call / join', () => {
+  const d = route('/agora call join !ops:matrix.example.org');
+  assert.equal(d.verb, 'call');
+  assert.equal(d.subVerb, 'join');
+  assert.deepEqual(d.args, ['!ops:matrix.example.org']);
+});
+
+test('route: /agora call (no args) → call / join (default)', () => {
+  const d = route('/agora call');
+  assert.equal(d.verb, 'call');
+  assert.equal(d.subVerb, 'join');
+});
+
 test('route: /agora dispatch empty → MISSING_ARG', () => {
   const d = route('/agora dispatch');
   assert.equal(d.errorCode, 'MISSING_ARG');

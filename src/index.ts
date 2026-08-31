@@ -479,6 +479,120 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         await matrix.sendText(input.roomId, `🔊 voice sent (${text.length} chars)`);
         return;
       }
+      case 'calendar': {
+        // v0.6 — thin delegate to agora REST. The upstream returns 503
+        // with a clear message when RADICALE_* env is missing; we surface
+        // the body verbatim so the human sees the exact gap (no silent
+        // fallback per §1.5).
+        try {
+          const sub = decision.subVerb ?? 'today';
+          const path = sub === 'today' || sub === 'conflicts'
+            ? `/api/calendar/${sub}`
+            : `/api/calendar/reports/${sub}`;
+          const query = decision.args.length > 0 ? `?${decision.args.join('&')}` : '';
+          const url = `${config.agoraServerUrl.replace(/\/$/u, '')}${path}${query}`;
+          const response = await fetch(url, {
+            method: sub === 'today' || sub === 'conflicts' ? 'GET' : 'POST',
+            headers: {
+              authorization: `Bearer ${config.agoraApiToken}`,
+              'content-type': 'application/json',
+            },
+          });
+          const body = await response.text();
+          if (!response.ok) {
+            await matrix.sendText(input.roomId, `❌ calendar ${sub} → ${response.status}: ${body.slice(0, 400)}`);
+            return;
+          }
+          const parsed = JSON.parse(body) as { events?: Array<{ summary: string; start: string; end: string }>; conflicts?: Array<{ summary_a: string; summary_b: string }>; markdown?: string };
+          if (sub === 'today' || sub === 'conflicts') {
+            const items = parsed.events ?? parsed.conflicts ?? [];
+            if (items.length === 0) {
+              await matrix.sendText(input.roomId, `_${sub}: empty_`);
+            } else {
+              const summary = items.slice(0, 8).map((item) => {
+                if ('summary' in item) return `${item.start} → ${item.end}  ${item.summary}`;
+                const c = item as { summary_a: string; summary_b: string };
+                return `⚠ ${c.summary_a} ↔ ${c.summary_b}`;
+              }).join('\n');
+              await matrix.sendText(input.roomId, summary);
+            }
+          } else if (parsed.markdown) {
+            await matrix.sendText(input.roomId, parsed.markdown);
+          }
+          return;
+        } catch (cause) {
+          await matrix.sendText(input.roomId, `❌ calendar failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+          return;
+        }
+      }
+      case 'doc': {
+        // v0.6 — `/agora doc show|edit <artifactId> [content...]`. Delegates
+        // to GET/POST /api/artifacts/:id/markdown. Single-writer v0.1.
+        try {
+          const sub = decision.subVerb ?? 'show';
+          const artifactId = decision.args[0];
+          if (!artifactId) {
+            await matrix.sendText(input.roomId, '❌ doc: missing artifactId. usage: `/agora doc show|edit <artifactId> [content]`');
+            return;
+          }
+          if (sub === 'show') {
+            const url = `${config.agoraServerUrl.replace(/\/$/u, '')}/api/artifacts/${encodeURIComponent(artifactId)}/markdown`;
+            const response = await fetch(url, { headers: { authorization: `Bearer ${config.agoraApiToken}` } });
+            const body = await response.text();
+            if (!response.ok) {
+              await matrix.sendText(input.roomId, `❌ doc show → ${response.status}: ${body.slice(0, 400)}`);
+              return;
+            }
+            const parsed = JSON.parse(body) as { content: string; content_hash: string };
+            const preview = parsed.content.length > 1800 ? `${parsed.content.slice(0, 1800)}…` : parsed.content;
+            await matrix.sendText(input.roomId, `${preview}\n\n_sha ${parsed.content_hash.slice(0, 12)}_`);
+            return;
+          }
+          if (sub === 'edit') {
+            const content = decision.args.slice(1).join(' ');
+            if (!content) {
+              await matrix.sendText(input.roomId, '❌ doc edit: missing content. usage: `/agora doc edit <artifactId> <content...>`');
+              return;
+            }
+            const url = `${config.agoraServerUrl.replace(/\/$/u, '')}/api/artifacts/${encodeURIComponent(artifactId)}/markdown`;
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: { authorization: `Bearer ${config.agoraApiToken}`, 'content-type': 'application/json' },
+              body: JSON.stringify({ content }),
+            });
+            const body = await response.text();
+            if (!response.ok) {
+              await matrix.sendText(input.roomId, `❌ doc edit → ${response.status}: ${body.slice(0, 400)}`);
+              return;
+            }
+            const parsed = JSON.parse(body) as { content_hash: string; artifact: { id: string } };
+            await matrix.sendText(input.roomId, `✅ doc edit → ${parsed.artifact.id} sha ${parsed.content_hash.slice(0, 12)}`);
+            return;
+          }
+          await matrix.sendText(input.roomId, `❌ doc: unknown subVerb ${sub}. usage: \`/agora doc show|edit <artifactId>\``);
+          return;
+        } catch (cause) {
+          await matrix.sendText(input.roomId, `❌ doc failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+          return;
+        }
+      }
+      case 'call': {
+        // v0.6 — `/agora call join [roomId]` (EC_light). Posts the Element
+        // Call widget URL into the room. The actual SFU/TURN deploy is the
+        // user's decision; the bridge only ships the URL. The token below
+        // is a placeholder for LiveKit JWT (or Jitsi room token); replace
+        // `LIVEKIT_JWT_PLACEHOLDER` with the deployment's real JWT before
+        // shipping to production.
+        const widgetUrl = process.env.ELEMENT_CALL_WIDGET_URL ?? 'https://call.element.io';
+        const roomHint = decision.args[0] ?? input.roomId;
+        const token = process.env.ELEMENT_CALL_TOKEN ?? 'LIVEKIT_JWT_PLACEHOLDER';
+        const joinUrl = `${widgetUrl}?roomId=${encodeURIComponent(roomHint)}&token=${encodeURIComponent(token)}`;
+        await matrix.sendText(
+          input.roomId,
+          `📞 Element Call — click to join: ${joinUrl}\n\n_replace LIVEKIT_JWT_PLACEHOLDER with a real LiveKit / Jitsi token in the deployment env (ELEMENT_CALL_TOKEN)._`,
+        );
+        return;
+      }
       case 'im': {
         if (decision.subVerb === 'health') {
           const h = await agora.health();

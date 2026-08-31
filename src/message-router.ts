@@ -17,6 +17,9 @@ export type VerbName =
   | 'rollup'
   | 'stuck'
   | 'say'
+  | 'calendar'
+  | 'doc'
+  | 'call'
   | 'help'
   | 'unknown';
 
@@ -170,6 +173,40 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
       }
       return { verb: 'say', args: tail };
     }
+    case 'calendar': {
+      // v0.6 — `/agora calendar today|conflicts|morning|evening [--domain work|life]`.
+      // The bridge delegates to agora REST GET /api/calendar/{today,conflicts}
+      // or POST /api/calendar/reports/{morning,evening}. Without RADICALE_*
+      // env the upstream returns 503; we surface the gap explicitly.
+      if (tail.length === 0) {
+        return { verb: 'calendar', args: [], subVerb: 'today', errorCode: 'MISSING_ARG' };
+      }
+      const calendarSub = tail[0];
+      return calendarSub !== undefined
+        ? { verb: 'calendar', args: tail.slice(1), subVerb: calendarSub }
+        : { verb: 'calendar', args: tail.slice(1) };
+    }
+    case 'doc': {
+      // v0.6 — `/agora doc show|edit <artifactId> [content]` (single-writer v0.1).
+      // Delegates to agora REST GET/POST /api/artifacts/:id/markdown.
+      if (tail.length === 0) {
+        return { verb: 'doc', args: [], subVerb: 'show', errorCode: 'MISSING_ARG' };
+      }
+      const docSub = tail[0];
+      return docSub !== undefined
+        ? { verb: 'doc', args: tail.slice(1), subVerb: docSub }
+        : { verb: 'doc', args: tail.slice(1) };
+    }
+    case 'call': {
+      // v0.6 — `/agora call join [roomId]`. Enablement only (verdict P2
+      // postposed): the bridge posts the Element Call widget URL into the
+      // current room. Actual SFU/TURN deploy is the user's decision.
+      // When the user passes `join <roomId>` we keep `join` as subVerb and
+      // drop it from args so the bridge sees only the room id (or none).
+      const subVerb = tail[0] === 'join' || tail[0] === 'start' || tail[0] === 'leave' ? tail[0] : 'join';
+      const args = subVerb === 'join' && tail[0] === 'join' ? tail.slice(1) : tail;
+      return { verb: 'call', args, subVerb };
+    }
     case 'help': {
       return { verb: 'help', args: [] };
     }
@@ -210,4 +247,7 @@ export const HELP_TEXT = [
   '  /agora assistant inbox | commitments | show <request_id> | reconcile <request_id>',
   '  /agora im health | help',
   '  /agora say <text>                    (proactive voice; needs speech config)',
+  '  /agora calendar today|conflicts|morning|evening [--domain work|life]',
+  '  /agora doc show|edit <artifactId> [content]',
+  '  /agora call join [roomId]            (Element Call widget URL; SFU by user)',
 ].join('\n');
