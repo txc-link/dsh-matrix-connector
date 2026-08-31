@@ -8,6 +8,7 @@
  */
 
 import type { SecurityDomainConfig } from './security-domain.js';
+import type { ChatConfig } from './natural-chat.js';
 
 export interface MatrixConnectorConfig {
   /** Matrix homeserver base URL (e.g. https://matrix.example.org). */
@@ -81,6 +82,8 @@ export interface MatrixConnectorConfig {
     /** Provider-neutral binding ref -> Matrix room id, adapter-local only. */
     bindings: Record<string, string>;
   };
+  /** Natural chat: plain room messages are dispatched to a DSH agent. */
+  chat?: ChatConfig;
 }
 
 export const DEFAULT_EVENT_POLL_INTERVAL_MS = 5_000;
@@ -98,6 +101,7 @@ export type ResolvedMatrixConnectorConfig = Required<Omit<MatrixConnectorConfig,
   | 'securityBoundary'
   | 'speech'
   | 'initiativeDelivery'
+  | 'chat'
 >> & {
   nodeId: string;
   companyOrganization?: string;
@@ -106,6 +110,7 @@ export type ResolvedMatrixConnectorConfig = Required<Omit<MatrixConnectorConfig,
   securityBoundary?: SecurityDomainConfig;
   speech?: NonNullable<MatrixConnectorConfig['speech']>;
   initiativeDelivery?: NonNullable<MatrixConnectorConfig['initiativeDelivery']>;
+  chat?: NonNullable<MatrixConnectorConfig['chat']>;
 };
 
 export function buildConfig(input: MatrixConnectorConfig): ResolvedMatrixConnectorConfig {
@@ -134,5 +139,6 @@ export function buildConfig(input: MatrixConnectorConfig): ResolvedMatrixConnect
     ...(input.securityBoundary !== undefined ? { securityBoundary: input.securityBoundary } : {}),
     ...(input.speech !== undefined ? { speech: input.speech } : {}),
     ...(input.initiativeDelivery !== undefined ? { initiativeDelivery: input.initiativeDelivery } : {}),
+    ...(input.chat !== undefined ? { chat: input.chat } : {}),
   };
 }

@@ -158,12 +158,31 @@ autoJoin: true
 eventPollIntervalMs: 5000
 companyOrganization: 'my-company'
 companyProjectId: 'optional-core-project-id'
+chat:
+  enabled: false
+  dshApiBaseUrl: 'http://127.0.0.1:3080'
+  runtimeTargetRef: 'dsh:node-a:default'
+  waitTimeoutMs: 300000
+  rooms:
+    - '!room:example.org'
+  personas:
+    '!room:example.org': '你是小栀，虚拟女友。'
 ```
 
 `allowFrom` controls every inbound command and reply. Use `*` to allow all
 room members, or a comma-separated list of exact Matrix user IDs such as
 `@alice:example.org,@bob:example.org`. An explicitly empty value denies all
 senders.
+
+`chat.enabled` turns plain room messages (no slash command, no reply
+relation) into DSH agent conversations: the message is dispatched through
+the local `dsh-agora` HTTP facade (`/dsh-agora/api/dispatch`), and the
+agent reply is sent back to the room. `runtimeTargetRef` selects the agent
+on this DSH node (e.g. `dsh:node-home-linux:default`); `personas` maps a
+room id to an optional persona instruction. `rooms` restricts chat to an
+explicit allow-list; when omitted, every visible room participates. When `speech` and
+`securityBoundary` are configured, the reply is also delivered as an
+`m.audio` voice message (`chat.voice: true`, the default).
 
 Protected companion instance example (use a dedicated bot credential, never
 the Company bot):

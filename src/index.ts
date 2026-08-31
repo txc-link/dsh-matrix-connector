@@ -44,6 +44,15 @@ import { WindowsSapiSpeechAdapter, type SpeechSynthesizer } from './speech-synth
 import { FishSpeechSpeechAdapter } from './speech-synthesis-http.js';
 import { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
 import { isMatrixSenderAllowed } from './sender-authorization.js';
+import {
+  DshDispatchClient,
+  handleNaturalChat,
+  type ChatConfig,
+  type DshDispatchInput,
+  type DshDispatchResult,
+  type NaturalChatEvent,
+  type ResolvedChatConfig,
+} from './natural-chat.js';
 
 export interface CordisContext {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -70,6 +79,8 @@ export interface PluginOptions {
    */
   matrixJsSdkTransport?: import('./transport/matrix-js-sdk.js').MatrixJsSdkTransport;
   speechSynthesizer?: SpeechSynthesizer;
+  /** Test seam: overrides the local DSH dispatch client. */
+  chatDispatcher?: (input: DshDispatchInput) => Promise<DshDispatchResult>;
 }
 
 export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
@@ -108,6 +119,40 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         matrix,
       })
     : undefined;
+  const rawChat = opts.config.chat;
+  const chatConfig: ResolvedChatConfig = {
+    enabled: rawChat?.enabled === true,
+    dshApiBaseUrl: rawChat?.dshApiBaseUrl ?? 'http://127.0.0.1:3080',
+    ...(rawChat?.runtimeTargetRef !== undefined ? { runtimeTargetRef: rawChat.runtimeTargetRef } : {}),
+    waitTimeoutMs: rawChat?.waitTimeoutMs ?? 300_000,
+    ...(rawChat?.personas !== undefined ? { personas: rawChat.personas } : {}),
+    ...(rawChat?.rooms !== undefined ? { rooms: rawChat.rooms } : {}),
+    voice: rawChat?.voice ?? true,
+  };
+  const chatDispatchClient = opts.chatDispatcher
+    ? undefined
+    : new DshDispatchClient({ baseUrl: chatConfig.dshApiBaseUrl, timeoutMs: chatConfig.waitTimeoutMs });
+  const dispatchChatEvent = (event: NaturalChatEvent): Promise<Awaited<ReturnType<typeof handleNaturalChat>>> => {
+    if (!chatConfig.enabled) return Promise.resolve({ status: 'disabled' });
+    return handleNaturalChat({
+      config: chatConfig,
+      dispatch: (input) => opts.chatDispatcher
+        ? opts.chatDispatcher(input)
+        : chatDispatchClient!.dispatch(input),
+      event,
+      delivery: {
+        matrix,
+        ...(voiceDelivery ? { voiceDelivery } : {}),
+        sourceDomain: config.securityBoundary?.domainRef,
+        logger: opts.context.logger,
+      },
+    });
+  };
+  const handleNaturalChatSafely = (event: NaturalChatEvent): void => {
+    void dispatchChatEvent(event).catch((error: unknown) => {
+      opts.context.logger('natural chat failed:', error);
+    });
+  };
 
   async function drainRelationshipInitiatives(): Promise<void> {
     const delivery = config.initiativeDelivery;
@@ -500,11 +545,17 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
 
       ctx.on('matrix.room.message', ((msg: unknown) => {
         const message = msg as { roomId: string; senderMxid: string; body: string };
-        if (!isCommandMessage(message.body, { commandName: config.commandName })) return;
-        void handleRoomMessageSafely(
-          message,
-          'cordis',
-        );
+        if (isCommandMessage(message.body, { commandName: config.commandName })) {
+          void handleRoomMessageSafely(message, 'cordis');
+          return;
+        }
+        if (chatConfig.enabled) {
+          handleNaturalChatSafely({
+            roomId: message.roomId,
+            senderMxid: message.senderMxid,
+            body: message.body,
+          });
+        }
       }) as (...args: unknown[]) => void);
 
       ctx.on('agora.events.tick', ((evt: unknown) => {
@@ -554,7 +605,17 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           });
           return;
         }
-        if (!isCommandMessage(evt.body ?? '', { commandName: config.commandName })) return;
+        if (!isCommandMessage(evt.body ?? '', { commandName: config.commandName })) {
+          if (chatConfig.enabled) {
+            handleNaturalChatSafely({
+              roomId: evt.roomId,
+              senderMxid: evt.sender,
+              body: evt.body ?? '',
+              eventId: evt.eventId,
+            });
+          }
+          return;
+        }
         void handleRoomMessageSafely({
           roomId: evt.roomId,
           senderMxid: evt.sender,
@@ -612,6 +673,15 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
                   senderMxid: evt.sender,
                   body: evt.body,
                 }, 'space');
+                return;
+              }
+              if (chatConfig.enabled && !registry.threadKeyFor(evt.childRoomId)) {
+                handleNaturalChatSafely({
+                  roomId: evt.childRoomId,
+                  senderMxid: evt.sender,
+                  body: evt.body,
+                  eventId: evt.eventId,
+                });
                 return;
               }
               // Forward child timeline messages through the same
@@ -780,6 +850,15 @@ export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundar
 export { WindowsSapiSpeechAdapter, readWavDurationMs, type SpeechSynthesizer, type SynthesizedSpeech } from './speech-synthesis.js';
 export { FishSpeechSpeechAdapter, type FishSpeechSpeechOptions } from './speech-synthesis-http.js';
 export { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
+export {
+  DshDispatchClient,
+  handleNaturalChat,
+  type ChatConfig,
+  type DshDispatchInput,
+  type DshDispatchResult,
+  type NaturalChatEvent,
+  type ResolvedChatConfig,
+} from './natural-chat.js';
 export { type VerbDecision, type VerbName, route, renderError, HELP_TEXT } from './message-router.js';export { buildRoomName, ROOM_NAME_MAX_LENGTH, UNTITLED_FALLBACK } from './room-name.js';
 export { provisionTaskRoom } from './room-provisioner.js';
 export type {
