@@ -81,13 +81,19 @@ export interface PluginOptions {
   speechSynthesizer?: SpeechSynthesizer;
   /** Test seam: overrides the local DSH dispatch client. */
   chatDispatcher?: (input: DshDispatchInput) => Promise<DshDispatchResult>;
+  /**
+   * Test seam: inject a ThreadRegistry so the natural-chat / reply-ingest
+   * "bound vs unbound room" decision can be exercised deterministically.
+   * Production callers omit this and the plugin owns its own registry.
+   */
+  threadRegistry?: ThreadRegistry;
 }
 
 export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const config = buildConfig(opts.config);
   const matrix = opts.matrixClient;
   const agora = opts.agora;
-  const registry = new ThreadRegistry();
+  const registry = opts.threadRegistry ?? new ThreadRegistry();
   // A child-room event can be observed through both the shared SDK timeline
   // listener and the Space adapter. Claim each Matrix event once so a command
   // can never create duplicate Core tasks when both surfaces are active.
@@ -146,6 +152,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         sourceDomain: config.securityBoundary?.domainRef,
         logger: opts.context.logger,
       },
+      buildThreadKey,
     });
   };
   const handleNaturalChatSafely = (event: NaturalChatEvent): void => {
@@ -606,7 +613,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           return;
         }
         if (!isCommandMessage(evt.body ?? '', { commandName: config.commandName })) {
-          if (chatConfig.enabled) {
+          // Top-level timeline mirrors the space-child rule (line ~720):
+          // bound rooms (have an /agora task binding) MUST be served by
+          // reply-ingest so the existing task conversation continues.
+          // Only unbound rooms fall through to natural-chat / DSH web.
+          if (chatConfig.enabled && !registry.threadKeyFor(evt.roomId)) {
             handleNaturalChatSafely({
               roomId: evt.roomId,
               senderMxid: evt.sender,

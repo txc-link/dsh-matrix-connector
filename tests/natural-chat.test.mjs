@@ -11,6 +11,7 @@ import {
   DshDispatchClient,
   handleNaturalChat,
 } from '../lib/natural-chat.js';
+import { buildThreadKey } from '../lib/thread-registry.js';
 
 function fetchStub(status, body) {
   return async () => new Response(JSON.stringify(body), {
@@ -125,12 +126,13 @@ test('handleNaturalChat: persona is prepended and reply is sent', async () => {
     dispatch: async (input) => { seen.push(input); return { answer: '我也想你', dispatchId: 'd-9' }; },
     event: { roomId: '!gf:hs', senderMxid: '@root:hs', body: '今天想你了', eventId: '$e1' },
     delivery,
+    buildThreadKey,
   });
   assert.equal(outcome.status, 'replied');
   assert.equal(seen.length, 1);
   assert.match(seen[0].prompt, /你是小栀/);
   assert.match(seen[0].prompt, /今天想你了/);
-  assert.equal(seen[0].idempotencyKey, 'matrix-$e1');
+  assert.equal(seen[0].idempotencyKey, `matrix-${buildThreadKey('!gf:hs')}`);
   assert.deepEqual(sent, [{ roomId: '!gf:hs', body: '我也想你' }]);
   assert.equal(voiceDeliveries.length, 1);
   assert.equal(voiceDeliveries[0].roomId, '!gf:hs');
@@ -146,6 +148,7 @@ test('handleNaturalChat: voice failure never suppresses the text reply', async (
     dispatch: async () => ({ answer: '好的', dispatchId: 'd' }),
     event: { roomId: '!gf:hs', senderMxid: '@root:hs', body: 'ok' },
     delivery,
+    buildThreadKey,
   });
   assert.equal(outcome.status, 'replied');
   assert.equal(sent[0].body, '好的');
@@ -158,6 +161,7 @@ test('handleNaturalChat: dispatch failure sends an honest error receipt', async 
     dispatch: async () => { throw new Error('agent unavailable'); },
     event: { roomId: '!gf:hs', senderMxid: '@root:hs', body: 'hi' },
     delivery,
+    buildThreadKey,
   });
   assert.equal(outcome.status, 'error');
   assert.equal(sent.length, 1);

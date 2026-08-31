@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import { createMatrixConnectorPlugin } from '../lib/index.js';
 import { MatrixClient } from '../lib/matrix-client.js';
+import { buildThreadKey } from '../lib/thread-registry.js';
 
 function makeContext() {
   const listeners = new Map();
@@ -137,7 +138,8 @@ test('natural-chat: plain timeline message is dispatched and replied', async () 
 
   assert.equal(seen.length, 1);
   assert.equal(seen[0].prompt, '你好');
-  assert.equal(seen[0].idempotencyKey, 'matrix-$plain-1');
+  assert.equal(seen[0].idempotencyKey, `matrix-${buildThreadKey('!chat:hs')}`);
+  assert.equal(seen[0].threadKey, buildThreadKey('!chat:hs'));
   assert.equal(harness.sent.at(-1).body, '我在呢');
   ctx.cleanup();
 });

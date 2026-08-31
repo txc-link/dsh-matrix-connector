@@ -44,6 +44,13 @@ export interface DshDispatchInput {
   readonly prompt: string;
   readonly idempotencyKey: string;
   readonly waitTimeoutMs: number;
+  /**
+   * Opaque room/session binding key. Same room MUST emit the same key so the
+   * local DSH web facade can reuse the existing session instead of opening
+   * a new one for every message. Caller owns this identifier; we never derive
+   * it inside DshDispatchClient.
+   */
+  readonly threadKey?: string;
 }
 
 export interface DshDispatchResult {
@@ -77,6 +84,7 @@ export class DshDispatchClient {
         prompt: input.prompt,
         idempotencyKey: input.idempotencyKey,
         waitTimeoutMs: input.waitTimeoutMs,
+        ...(input.threadKey ? { threadKey: input.threadKey } : {}),
       }),
       signal: AbortSignal.timeout(Math.max(15_000, this.timeoutMs)),
     });
@@ -126,6 +134,13 @@ export interface HandleNaturalChatOptions {
   readonly dispatch: (input: DshDispatchInput) => Promise<DshDispatchResult>;
   readonly event: NaturalChatEvent;
   readonly delivery: NaturalChatDelivery;
+  /**
+   * Opaque threadKey resolver. Same roomId MUST yield the same key so the
+   * local DSH web facade treats every message in a room as a continuation
+   * of the same session. The connector adapter owns this function (typically
+   * `buildThreadKey`); natural-chat never invents a key from eventId.
+   */
+  readonly buildThreadKey: (roomId: string) => string;
 }
 
 export type NaturalChatOutcome =
@@ -134,7 +149,7 @@ export type NaturalChatOutcome =
   | { readonly status: 'error'; readonly message: string };
 
 export async function handleNaturalChat(options: HandleNaturalChatOptions): Promise<NaturalChatOutcome> {
-  const { config, dispatch, event, delivery } = options;
+  const { config, dispatch, event, delivery, buildThreadKey } = options;
   if (!config.enabled || !config.runtimeTargetRef) return { status: 'disabled' };
   if (config.rooms && !config.rooms.includes(event.roomId)) return { status: 'skipped' };
   const body = event.body.trim();
@@ -142,7 +157,11 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
 
   const persona = config.personas?.[event.roomId]?.trim();
   const prompt = persona && persona.length > 0 ? `${persona}\n\n用户消息：${body}` : body;
-  const idempotencyKey = `matrix-${event.eventId ?? `${event.roomId}:${event.senderMxid}:${Date.now()}`}`;
+  // Room-level idempotencyKey — derived solely from the opaque threadKey.
+  // EventId is intentionally excluded: each new Matrix eventId would force
+  // the local DSH facade to open a brand new session, breaking continuity.
+  const threadKey = buildThreadKey(event.roomId);
+  const idempotencyKey = `matrix-${threadKey}`;
 
   try {
     const result = await dispatch({
@@ -150,6 +169,7 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
       prompt,
       idempotencyKey,
       waitTimeoutMs: config.waitTimeoutMs,
+      threadKey,
     });
     const text = result.answer.trim();
     if (text.length === 0) throw new Error('agent returned an empty reply');
