@@ -1,6 +1,6 @@
 {
   "name": "dsh-matrix-connector",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "DSH-native Matrix IM entry adapter for Agora governance — second IM implementation alongside cc-connect",
   "private": false,
   "type": "module",

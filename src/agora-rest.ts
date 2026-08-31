@@ -418,7 +418,7 @@ export class AgoraRestClient {
     actor_ref: string;
     target_domain: string;
     purpose: string;
-    permission: 'read' | 'write' | 'share' | 'execute';
+    permission: 'read' | 'derive' | 'disclose' | 'act';
     requested_fields: string[];
   }): Promise<{ allowed: boolean; reason: string; grant_id: string | null }> {
     return this.request('POST', '/api/governance/information/authorize', input);

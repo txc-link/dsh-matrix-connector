@@ -7,7 +7,7 @@ export interface InformationAuthorizationInput {
   actor_ref: string;
   target_domain: string;
   purpose: string;
-  permission: 'read' | 'write' | 'share' | 'execute';
+  permission: 'read' | 'derive' | 'disclose' | 'act';
   requested_fields: string[];
 }
 
@@ -72,7 +72,7 @@ export class GovernedVoiceDelivery {
       actor_ref: input.actorRef,
       target_domain: this.options.boundary.domainRef,
       purpose: input.purpose,
-      permission: 'share',
+      permission: 'disclose',
       requested_fields: input.requestedFields ?? ['text'],
     });
     if (!authorization.allowed) {
@@ -111,4 +111,3 @@ export class GovernedVoiceDelivery {
     });
   }
 }
-
