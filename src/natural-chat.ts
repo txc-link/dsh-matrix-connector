@@ -120,6 +120,7 @@ export interface NaturalChatEvent {
   readonly senderMxid: string;
   readonly body: string;
   readonly eventId?: string;
+  readonly collaboration?: { readonly round: number; readonly targetRoles: readonly string[] };
 }
 
 export interface NaturalChatDelivery {
@@ -156,7 +157,12 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
   if (body.length === 0) return { status: 'skipped' };
 
   const persona = config.personas?.[event.roomId]?.trim();
-  const prompt = persona && persona.length > 0 ? `${persona}\n\n用户消息：${body}` : body;
+  const collaboration = event.collaboration
+    ? `[协同回合 ${event.collaboration.round}; 目标角色：${event.collaboration.targetRoles.join(', ') || '未指定'}]`
+    : '';
+  const prompt = collaboration || persona
+    ? [collaboration, persona, `用户消息：${body}`].filter((part) => part && part.length > 0).join('\n\n')
+    : body;
   // Room-level idempotencyKey — derived solely from the opaque threadKey.
   // EventId is intentionally excluded: each new Matrix eventId would force
   // the local DSH facade to open a brand new session, breaking continuity.

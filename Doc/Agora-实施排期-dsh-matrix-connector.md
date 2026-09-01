@@ -270,12 +270,16 @@ connector 不复制任务状态，只通过 Core REST 读取：
 
 三者都渲染同一份“协同快照”：任务状态/当前阶段、执行团队、最近 timeline 事件、最近 conversation、stuck 状态和下一步建议。Core endpoint 不可用时显示具体 unavailable 原因；不把错误降级成空结果。绑定任务的房间中，普通消息和带 `m.in_reply_to` 的回复都会回流 Core conversation（reply parent 有则保留）；`@dsh-bridge-*` 发送者记录为 `agent`，其他发送者默认 `human`，也可由 adapter 显式覆盖；未绑定房间仍走自然对话策略，Matrix 房间不是 SSoT。
 
+### 12.1a 显式点名与回合控制
+
+自然对话仍由 `chat.runtimeTargetRef` 指向具体 DSH 节点。人类普通消息保持兼容；在绑定任务房间中，只有 `/agora` 命令或 `@role` 点名才会唤醒 runtime。agent 普通消息只回流 conversation，不再次唤醒；agent 若明确点名其他角色才允许继续一轮。`CollabTurnController` 在 adapter 内执行 event 去重、默认 1.5 秒 cooldown、每轮 1 个 agent、最多 4 轮，避免多个 bot 无限互答。该状态不替代 Core 的 coordination/task 权威状态，重启后应以 Core 记录为准。
+
 ### 12.2 与 Core 长期能力的边界
 
 - 终态任务总结和 Mem0 写入由 agora-ts `TaskMemorySummaryService` 负责，connector 只展示任务和 artifact 结果。
-- 角色人格版本与 Routine 调度由 agora-ts 管理；connector 的 `delivery_binding_ref` 可以指向 Matrix room，但不执行 prompt、不保存 lease。
+- 角色人格版本与 Routine 调度由 agora-ts 管理；`RoutineRunner` 通过通用 IM port 投递到 connector 的 `delivery_binding_ref`，connector 不执行 prompt、不保存 lease。
 - Company/Life/Health/Companion 继续分离根域和安全边界；connector 不因协同命令跨域投影。
 
 ### 12.3 验证
 
-`npm run build` 通过，`npm test` 292/292 通过；新增 REST client、router、TaskBridge 协同快照和绑定房间普通消息回流测试。该 slice 未部署到生产节点。
+`npm run build` 通过，`npm test` 295/295 通过；新增 `CollabTurnController` 点名/冷却/轮次/去重测试，以及绑定房间 agent 循环抑制回归。该 slice 未部署到生产节点。

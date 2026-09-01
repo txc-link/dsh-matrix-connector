@@ -38,6 +38,7 @@ import { renderRollup } from './rollup.js';
 import { buildStuckAlert } from './stuck-alert.js';
 import { renderStuckList } from './stuck-list.js';
 import { ingestMatrixReply } from './reply-ingest.js';
+import { CollabTurnController, isLikelyAgentMxid, type CollabTurnDecision } from './collab-turn-controller.js';
 import type { MatrixTimelineEvent } from './matrix-client.js';
 import { SecurityDomainBoundary } from './security-domain.js';
 import { WindowsSapiSpeechAdapter, type SpeechSynthesizer } from './speech-synthesis.js';
@@ -94,6 +95,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
   const matrix = opts.matrixClient;
   const agora = opts.agora;
   const registry = opts.threadRegistry ?? new ThreadRegistry();
+  const collabTurns = new CollabTurnController();
   // A child-room event can be observed through both the shared SDK timeline
   // listener and the Space adapter. Claim each Matrix event once so a command
   // can never create duplicate Core tasks when both surfaces are active.
@@ -159,6 +161,20 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     void dispatchChatEvent(event).catch((error: unknown) => {
       opts.context.logger('natural chat failed:', error);
     });
+  };
+
+  const decideNaturalChat = (input: { roomId: string; senderMxid: string; body: string; eventId?: string }): { allow: boolean; decision: CollabTurnDecision } => {
+    const threadKey = registry.threadKeyFor(input.roomId);
+    const taskId = threadKey ? registry.get(threadKey)?.taskId : undefined;
+    const decision = collabTurns.decide({
+      roomId: input.roomId, ...(taskId ? { taskId } : {}), senderMxid: input.senderMxid,
+      body: input.body, ...(input.eventId ? { eventId: input.eventId } : {}),
+      actorKind: isLikelyAgentMxid(input.senderMxid) ? 'agent' : 'human',
+    });
+    if (decision.status === 'wake') return { allow: true, decision };
+    // Preserve the existing assistant UX for human messages in unbound rooms;
+    // only agent-originated messages require an explicit @role/command.
+    return { allow: !isLikelyAgentMxid(input.senderMxid) && !threadKey, decision };
   };
 
   async function drainRelationshipInitiatives(): Promise<void> {
@@ -714,11 +730,8 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           return;
         }
         if (chatConfig.enabled) {
-          handleNaturalChatSafely({
-            roomId: message.roomId,
-            senderMxid: message.senderMxid,
-            body: message.body,
-          });
+          const wake = decideNaturalChat(message);
+          if (wake.allow) handleNaturalChatSafely({ ...message, ...(wake.decision.status === 'wake' ? { collaboration: { round: wake.decision.round, targetRoles: wake.decision.targetRoles } } : {}) });
         }
       }) as (...args: unknown[]) => void);
 
@@ -775,12 +788,16 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           // message into the task conversation, so humans and agents can
           // collaborate without requiring Matrix reply markup. Only unbound
           // rooms fall through to natural-chat / DSH web.
-          if (chatConfig.enabled && !registry.threadKeyFor(evt.roomId)) {
+          const wake = decideNaturalChat({
+            roomId: evt.roomId, senderMxid: evt.sender, body: evt.body ?? '', eventId: evt.eventId,
+          });
+          if (chatConfig.enabled && wake.allow) {
             handleNaturalChatSafely({
               roomId: evt.roomId,
               senderMxid: evt.sender,
               body: evt.body ?? '',
               eventId: evt.eventId,
+              ...(wake.decision.status === 'wake' ? { collaboration: { round: wake.decision.round, targetRoles: wake.decision.targetRoles } } : {}),
             });
           }
           if (registry.threadKeyFor(evt.roomId)) {
@@ -862,12 +879,14 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
                 }, 'space');
                 return;
               }
-              if (chatConfig.enabled && !registry.threadKeyFor(evt.childRoomId)) {
+              const wake = decideNaturalChat({ roomId: evt.childRoomId, senderMxid: evt.sender, body: evt.body, eventId: evt.eventId });
+              if (chatConfig.enabled && wake.allow) {
                 handleNaturalChatSafely({
                   roomId: evt.childRoomId,
                   senderMxid: evt.sender,
                   body: evt.body,
                   eventId: evt.eventId,
+                  ...(wake.decision.status === 'wake' ? { collaboration: { round: wake.decision.round, targetRoles: wake.decision.targetRoles } } : {}),
                 });
                 return;
               }
