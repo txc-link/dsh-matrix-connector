@@ -116,6 +116,15 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     opts.context.logger(`matrix inbound denied by allowFrom: sender=${senderMxid} room=${roomId}`);
     return false;
   };
+  const authorizeMatrixRoom = (roomId: string): boolean => {
+    if (!securityBoundary) return true;
+    const decision = securityBoundary.authorizeRoomProjection(securityBoundary.domainRef, roomId);
+    if (!decision.allowed) {
+      opts.context.logger(`matrix inbound denied by security boundary: ${decision.reason}`);
+      return false;
+    }
+    return true;
+  };
   const securityBoundary = config.securityBoundary
     ? new SecurityDomainBoundary(config.securityBoundary)
     : undefined;
@@ -327,13 +336,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     body: string;
   }): Promise<void> {
     if (!authorizeMatrixSender(input.senderMxid, input.roomId)) return;
-    if (securityBoundary) {
-      const local = securityBoundary.authorizeRoomProjection(securityBoundary.domainRef, input.roomId);
-      if (!local.allowed) {
-        opts.context.logger(`matrix inbound denied by security boundary: ${local.reason}`);
-        return;
-      }
-    }
+    if (!authorizeMatrixRoom(input.roomId)) return;
     // v1.0.1 — every incoming room message remembers the room for
     // the org rollup view.
     registry.rememberRoom(input.roomId);
@@ -725,6 +728,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
 
       ctx.on('matrix.room.message', ((msg: unknown) => {
         const message = msg as { roomId: string; senderMxid: string; body: string };
+        if (!authorizeMatrixRoom(message.roomId)) return;
         if (isCommandMessage(message.body, { commandName: config.commandName })) {
           void handleRoomMessageSafely(message, 'cordis');
           return;
@@ -761,6 +765,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         if (evt.type !== 'm.room.message') return;
         if (evt.isOwn) return;
         if (!authorizeMatrixSender(evt.sender, evt.roomId)) return;
+        if (!authorizeMatrixRoom(evt.roomId)) return;
         if (!claimMatrixEvent(evt.eventId)) return;
         if (evt.relatesTo?.inReplyTo?.eventId) {
           void ingestMatrixReply({
@@ -866,6 +871,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
               }
               if (evt.sender === config.userId) return;
               if (!authorizeMatrixSender(evt.sender, evt.childRoomId)) return;
+              if (!authorizeMatrixRoom(evt.childRoomId)) return;
               if (!claimMatrixEvent(evt.eventId)) return;
               // matrix-js-sdk versions differ in whether Room.timeline is
               // surfaced on the client, the Room object, or both. Space child
