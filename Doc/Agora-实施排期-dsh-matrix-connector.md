@@ -268,7 +268,7 @@ connector 不复制任务状态，只通过 Core REST 读取：
 /agora task context <task_id>
 ```
 
-三者都渲染同一份“协同快照”：任务状态/当前阶段、执行团队、最近 timeline 事件、最近 conversation、stuck 状态和下一步建议。Core endpoint 不可用时显示具体 unavailable 原因；不把错误降级成空结果。绑定任务的房间中，普通消息和带 `m.in_reply_to` 的回复都会回流 Core conversation（reply parent 有则保留）；未绑定房间仍走自然对话策略，Matrix 房间不是 SSoT。
+三者都渲染同一份“协同快照”：任务状态/当前阶段、执行团队、最近 timeline 事件、最近 conversation、stuck 状态和下一步建议。Core endpoint 不可用时显示具体 unavailable 原因；不把错误降级成空结果。绑定任务的房间中，普通消息和带 `m.in_reply_to` 的回复都会回流 Core conversation（reply parent 有则保留）；`@dsh-bridge-*` 发送者记录为 `agent`，其他发送者默认 `human`，也可由 adapter 显式覆盖；未绑定房间仍走自然对话策略，Matrix 房间不是 SSoT。
 
 ### 12.2 与 Core 长期能力的边界
 

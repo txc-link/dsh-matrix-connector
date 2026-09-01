@@ -12,6 +12,8 @@ export interface MatrixReplyEvent {
   sender: string;
   body: string;
   relatesTo?: { inReplyTo?: { eventId?: string } };
+  /** Optional adapter-side classification; defaults to bridge-bot heuristic. */
+  authorKind?: 'human' | 'agent' | 'craftsman' | 'system';
 }
 
 export interface ReplyIngestAgora {
@@ -63,7 +65,7 @@ export async function ingestMatrixReply(
       ? { parent_message_ref: event.relatesTo.inReplyTo.eventId }
       : {}),
     body,
-    author_kind: 'human',
+    author_kind: event.authorKind ?? (event.sender.includes('dsh-bridge-') ? 'agent' : 'human'),
     author_ref: event.sender,
     occurred_at: occurredAt ?? new Date().toISOString(),
     thread_task_binding_key: threadKey,
