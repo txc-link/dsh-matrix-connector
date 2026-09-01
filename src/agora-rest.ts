@@ -107,6 +107,40 @@ export interface TaskRecord {
   [k: string]: unknown;
 }
 
+export interface TaskTimelineEventRecord {
+  id: string;
+  source: string;
+  event: string;
+  task_id: string;
+  stage_id?: string | null;
+  actor?: string | null;
+  summary: string;
+  detail?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface TaskTimelineResponse {
+  task_id: string;
+  generated_at: string;
+  events: TaskTimelineEventRecord[];
+  stuck: {
+    is_stuck: boolean;
+    idle_ms: number;
+    last_activity_at: string | null;
+    threshold_ms: number;
+  };
+}
+
+export interface TaskConversationRecord {
+  id: string;
+  body: string;
+  author_kind?: string;
+  author_ref?: string | null;
+  display_name?: string | null;
+  occurred_at?: string;
+  [key: string]: unknown;
+}
+
 export interface ProjectRecord {
   id: string;
   name: string;
@@ -479,6 +513,18 @@ export class AgoraRestClient {
 
   async getTask(taskId: string): Promise<TaskRecord> {
     return this.request<TaskRecord>('GET', `/api/tasks/${encodeURIComponent(taskId)}`);
+  }
+
+  async getTaskTimeline(taskId: string, stuckAfterMs?: number): Promise<TaskTimelineResponse> {
+    const query = stuckAfterMs === undefined ? '' : `?stuck_after_ms=${encodeURIComponent(String(stuckAfterMs))}`;
+    return this.request<TaskTimelineResponse>('GET', `/api/tasks/${encodeURIComponent(taskId)}/timeline${query}`);
+  }
+
+  async listTaskConversation(taskId: string): Promise<TaskConversationRecord[]> {
+    const response = await this.request<{ entries: TaskConversationRecord[] }>(
+      'GET', `/api/tasks/${encodeURIComponent(taskId)}/conversation`,
+    );
+    return response.entries;
   }
 
   async createTask(input: CreateTaskInput): Promise<CreateTaskResponse> {

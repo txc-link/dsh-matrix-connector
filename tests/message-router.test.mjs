@@ -167,6 +167,16 @@ test('route: /agora task transfer <id> [reason] → task / transfer', () => {
   assert.deepEqual(d.args, ['t-7', 'reassign', 'to', 'node-b']);
 });
 
+test('route: /agora task collab|timeline|context <id> → shared collaboration snapshot', () => {
+  for (const command of ['collab', 'timeline', 'context']) {
+    const d = route(`/agora task ${command} t-9`);
+    assert.equal(d.verb, 'task');
+    assert.equal(d.subVerb, command === 'context' ? 'collab' : command, command);
+    assert.deepEqual(d.args, ['t-9']);
+  }
+  assert.equal(route('/agora task collab').errorCode, 'MISSING_ARG');
+});
+
 test('route: /agora brain search <query> → brain / search / <query>', () => {
   const d = route('/agora brain search dispatch 协议');
   assert.equal(d.verb, 'brain');

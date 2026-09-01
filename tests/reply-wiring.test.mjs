@@ -171,6 +171,25 @@ test('reply-wiring: dispatch binds a room, then a reply ingests into agora', asy
   assert.ok(call.input.thread_task_binding_key.startsWith('mx_'), 'opaque threadKey');
 });
 
+test('reply-wiring: ordinary messages in a bound room join the shared task conversation', async (t) => {
+  const harness = makeWiringHarness();
+  const ctx = makeContext();
+  t.after(() => ctx.cleanup());
+  buildPlugin(harness, ctx);
+  ctx.emit('matrix.room.message', {
+    roomId: '!room-1:agent-hub.local', senderMxid: '@alice:agent-hub.local', body: '/agora dispatch compare options',
+  });
+  await tick();
+  await harness.timelineHandler()({
+    roomId: '!room-1:agent-hub.local', eventId: '$evt-message', sender: '@agent-a:agent-hub.local',
+    type: 'm.room.message', body: '我已完成第一版对比', originServerTs: 1785556800000,
+  });
+  await tick();
+  assert.equal(harness.replied.length, 1);
+  assert.equal(harness.replied[0].input.body, '我已完成第一版对比');
+  assert.equal(harness.replied[0].input.parent_message_ref, undefined);
+});
+
 test('reply-wiring: non-message events, own messages, unbound rooms are ignored', async (t) => {
   const harness = makeWiringHarness();
   const ctx = makeContext();

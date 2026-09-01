@@ -1,6 +1,6 @@
 # 实施排期 SSoT — dsh-matrix-connector (独立仓)
 
-**Last updated**: 2026-08-30 (Asia/Shanghai)
+**Last updated**: 2026-09-01 (Asia/Shanghai, Matrix collaboration snapshot)
 **Owner**: 总工
 **Repo**: txc-link/dsh-matrix-connector
 **Phase**: Company OS v0.1 Matrix entry deployed (connector 0.3.0)
@@ -250,3 +250,32 @@ store 与授权边界。EA 可以负责跨域路由，但角色身份本身不�
 
 Planning: `Doc/09-PLANNING/TASKS/2026-08-30-company-os-v01/`。
 Walkthrough: `Doc/10-WALKTHROUGH/2026-08-30-company-os-v01-matrix-v03.md`。
+
+## 12. 记忆总结、角色例行与群内协同（connector 0.6.1 follow-up）
+
+### 12.1 协同读取面
+
+connector 不复制任务状态，只通过 Core REST 读取：
+
+- `GET /api/tasks/:id/timeline`
+- `GET /api/tasks/:id/conversation`
+
+房间命令：
+
+```text
+/agora task collab <task_id>
+/agora task timeline <task_id>
+/agora task context <task_id>
+```
+
+三者都渲染同一份“协同快照”：任务状态/当前阶段、执行团队、最近 timeline 事件、最近 conversation、stuck 状态和下一步建议。Core endpoint 不可用时显示具体 unavailable 原因；不把错误降级成空结果。绑定任务的房间中，普通消息和带 `m.in_reply_to` 的回复都会回流 Core conversation（reply parent 有则保留）；未绑定房间仍走自然对话策略，Matrix 房间不是 SSoT。
+
+### 12.2 与 Core 长期能力的边界
+
+- 终态任务总结和 Mem0 写入由 agora-ts `TaskMemorySummaryService` 负责，connector 只展示任务和 artifact 结果。
+- 角色人格版本与 Routine 调度由 agora-ts 管理；connector 的 `delivery_binding_ref` 可以指向 Matrix room，但不执行 prompt、不保存 lease。
+- Company/Life/Health/Companion 继续分离根域和安全边界；connector 不因协同命令跨域投影。
+
+### 12.3 验证
+
+`npm run build` 通过，`npm test` 292/292 通过；新增 REST client、router、TaskBridge 协同快照和绑定房间普通消息回流测试。该 slice 未部署到生产节点。

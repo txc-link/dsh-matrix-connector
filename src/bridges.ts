@@ -154,6 +154,62 @@ export class TaskBridge {
       .join('\n');
     return `artifacts for task \`${detail.id}\`:\n${body}`;
   }
+
+  /**
+   * Render a room-friendly collaboration snapshot.  This deliberately reads
+   * the provider-neutral task, timeline and conversation endpoints together so
+   * humans and agents can join the same room without guessing which worker is
+   * active or asking the connector to own task state.
+   */
+  async collaboration(taskId: string): Promise<string> {
+    const detail = await this.agora.getTask(taskId);
+    const [timelineResult, conversationResult] = await Promise.allSettled([
+      this.agora.getTaskTimeline(taskId),
+      this.agora.listTaskConversation(taskId),
+    ]);
+    const lines = [
+      `🤝 task \`${detail.id}\` — ${detail.title ?? 'untitled'}`,
+      `state=${detail.state}${detail.current_stage ? `  stage=${detail.current_stage}` : ''}  type=${detail.type ?? '—'}`,
+      `creator=${detail.creator ?? '—'}`,
+    ];
+    const team = (detail.team as { members?: Array<{ role?: string; agentId?: string; agent_id?: string }> } | undefined)?.members ?? [];
+    if (team.length > 0) {
+      lines.push(`team: ${team.map((member) => `${member.role ?? 'member'}=${member.agentId ?? member.agent_id ?? '—'}`).join(', ')}`);
+    }
+    if (timelineResult.status === 'fulfilled') {
+      const timeline = timelineResult.value;
+      const recent = timeline.events.slice(-8);
+      lines.push(`timeline (${recent.length}/${timeline.events.length}):`);
+      if (recent.length === 0) lines.push('- no activity recorded');
+      for (const event of recent) {
+        const actor = event.actor ? ` @${event.actor}` : '';
+        lines.push(`- ${event.created_at} ${event.event}${actor}: ${event.summary}`);
+      }
+      if (timeline.stuck.is_stuck) {
+        lines.push(`⚠ stuck: idle ${Math.round(timeline.stuck.idle_ms / 1000)}s (threshold ${Math.round(timeline.stuck.threshold_ms / 1000)}s)`);
+      }
+    } else {
+      lines.push(`timeline: unavailable (${timelineResult.reason instanceof Error ? timelineResult.reason.message : String(timelineResult.reason)})`);
+    }
+    if (conversationResult.status === 'fulfilled') {
+      const recent = conversationResult.value.slice(-8);
+      lines.push(`conversation (${recent.length} latest):`);
+      if (recent.length === 0) lines.push('- no room messages recorded');
+      for (const entry of recent) {
+        const author = entry.display_name ?? entry.author_ref ?? entry.author_kind ?? 'unknown';
+        lines.push(`- ${author}: ${entry.body}`);
+      }
+    } else {
+      lines.push(`conversation: unavailable (${conversationResult.reason instanceof Error ? conversationResult.reason.message : String(conversationResult.reason)})`);
+    }
+    const next = detail.state === 'done' || detail.state === 'completed'
+      ? 'next: review artifacts and record the decision/lesson.'
+      : detail.state === 'blocked' || detail.state === 'paused'
+        ? 'next: resolve the blocker or use `/agora task resume|unblock <id>` after approval.'
+        : 'next: agents should post progress here; the room timeline is the shared source of truth.';
+    lines.push(next);
+    return lines.join('\n');
+  }
 }
 
 export class ArtifactBridge {

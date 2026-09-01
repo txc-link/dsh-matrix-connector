@@ -96,9 +96,9 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
         return { verb: 'task', args: [], errorCode: 'MISSING_ARG' };
       }
       const sub = tail[0]!;
-      if (sub === 'show') {
-        if (tail.length < 2) return { verb: 'task', args: [], subVerb: 'show', errorCode: 'MISSING_ARG' };
-        return { verb: 'task', args: tail.slice(1), subVerb: 'show' };
+      if (sub === 'show' || sub === 'collab' || sub === 'timeline' || sub === 'context') {
+        if (tail.length < 2) return { verb: 'task', args: [], subVerb: sub === 'context' ? 'collab' : sub, errorCode: 'MISSING_ARG' };
+        return { verb: 'task', args: tail.slice(1), subVerb: sub === 'context' ? 'collab' : sub };
       }
       if (sub === 'pause' || sub === 'resume' || sub === 'cancel' || sub === 'unblock') {
         if (tail.length < 2) return { verb: 'task', args: [], subVerb: sub, errorCode: 'MISSING_ARG' };
@@ -242,6 +242,8 @@ export const HELP_TEXT = [
   '  /agora dispatch <prompt>                 (creates quick task)',
   '  /agora task <task_id> [artifacts]',
   '  /agora task show <task_id> [artifacts]',
+  '  /agora task collab <task_id>            (shared timeline + conversation snapshot)',
+  '  /agora task timeline <task_id>         (alias for collab)',
   '  /agora task pause <task_id> [reason]',
   '  /agora task resume <task_id>',
   '  /agora task cancel <task_id> [reason]',

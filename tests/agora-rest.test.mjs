@@ -99,6 +99,20 @@ test('agora-rest: resumeTask posts empty body to /api/tasks/:id/resume', async (
   assert.deepEqual(JSON.parse(captured[0].init.body), {});
 });
 
+test('agora-rest: getTaskTimeline and listTaskConversation use provider-neutral read endpoints', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, (init) => init.method === 'GET' && captured.length === 1
+    ? okJson({ task_id: 't-1', generated_at: '2026-09-01T10:00:00Z', events: [], stuck: { is_stuck: false, idle_ms: 0, last_activity_at: null, threshold_ms: 600000 } })
+    : okJson({ entries: [{ id: 'm-1', body: 'hello' }] }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+  const timeline = await client.getTaskTimeline('t-1', 900000);
+  const conversation = await client.listTaskConversation('t-1');
+  assert.equal(timeline.task_id, 't-1');
+  assert.equal(conversation[0].body, 'hello');
+  assert.match(captured[0].url, /\/api\/tasks\/t-1\/timeline\?stuck_after_ms=900000$/);
+  assert.match(captured[1].url, /\/api\/tasks\/t-1\/conversation$/);
+});
+
 test('agora-rest: cancelTask posts reason to /api/tasks/:id/cancel', async () => {
   const captured = [];
   const fetchImpl = makeFetch(captured, () => okJson({ id: 't-1', state: 'cancelled', title: 'x', type: 'quick', creator: '@u:hs' }));

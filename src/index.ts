@@ -388,6 +388,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
           return;
         }
         const taskId = decision.args[0]!;
+        if (sub === 'collab' || sub === 'timeline' || sub === 'context') {
+          const snapshot = await taskBridge.collaboration(taskId);
+          await matrix.sendText(input.roomId, snapshot);
+          return;
+        }
         const includeArtifacts = decision.args.includes('artifacts');
         const head = await taskBridge.show(taskId);
         if (includeArtifacts) {
@@ -766,15 +771,34 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         }
         if (!isCommandMessage(evt.body ?? '', { commandName: config.commandName })) {
           // Top-level timeline mirrors the space-child rule (line ~720):
-          // bound rooms (have an /agora task binding) MUST be served by
-          // reply-ingest so the existing task conversation continues.
-          // Only unbound rooms fall through to natural-chat / DSH web.
+          // bound rooms (have an /agora task binding) ingest every ordinary
+          // message into the task conversation, so humans and agents can
+          // collaborate without requiring Matrix reply markup. Only unbound
+          // rooms fall through to natural-chat / DSH web.
           if (chatConfig.enabled && !registry.threadKeyFor(evt.roomId)) {
             handleNaturalChatSafely({
               roomId: evt.roomId,
               senderMxid: evt.sender,
               body: evt.body ?? '',
               eventId: evt.eventId,
+            });
+          }
+          if (registry.threadKeyFor(evt.roomId)) {
+            void ingestMatrixReply({
+              agora,
+              threadKeyOf: (roomId) => registry.threadKeyFor(roomId),
+              taskIdOf: (threadKey) => registry.get(threadKey)?.taskId ?? undefined,
+              event: {
+                roomId: evt.roomId,
+                eventId: evt.eventId,
+                sender: evt.sender,
+                body: evt.body ?? '',
+              },
+              occurredAt: evt.originServerTs
+                ? new Date(evt.originServerTs).toISOString()
+                : new Date().toISOString(),
+            }).catch((err: unknown) => {
+              ctx.logger('message ingest failed:', err);
             });
           }
           return;

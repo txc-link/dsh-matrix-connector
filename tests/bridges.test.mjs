@@ -29,6 +29,8 @@ function makeAgora(overrides = {}) {
     ],
     listTasks: async () => [],
     getTask: async (id) => overrides.task ?? { id, state: 'running', type: 'quick', creator: '@u:hs', current_stage: 'execute' },
+    getTaskTimeline: async (id) => overrides.timeline ?? { task_id: id, generated_at: '2026-09-01T10:00:00Z', events: [], stuck: { is_stuck: false, idle_ms: 0, last_activity_at: null, threshold_ms: 600000 } },
+    listTaskConversation: async () => overrides.conversation ?? [],
     createTask: async (input) => overrides.taskReceipt ?? { id: 'task_42', state: 'pending', type: input.type, title: input.title, creator: input.creator },
     listProjects: async () => ({ projects: [] }),
     getProject: async () => ({}),
@@ -167,6 +169,26 @@ test('TaskBridge.show: shows id + state + creator + type', async () => {
   assert.match(out, /stage=execute/);
   assert.match(out, /creator: @u:hs/);
   assert.match(out, /type: quick/);
+});
+
+test('TaskBridge.collaboration: combines team, timeline, conversation and next action', async () => {
+  const bridge = new TaskBridge(makeAgora({
+    task: {
+      id: 'task-42', title: 'Research', state: 'running', type: 'research', creator: '@ceo:hs', current_stage: 'execute',
+      team: { members: [{ role: 'lead', agentId: 'agent-a' }, { role: 'worker', agent_id: 'agent-b' }] },
+    },
+    timeline: {
+      task_id: 'task-42', generated_at: '2026-09-01T10:00:00Z',
+      events: [{ id: 'e-1', source: 'progress_log', event: 'progress', task_id: 'task-42', stage_id: 'execute', actor: 'agent-a', summary: 'drafted options', created_at: '2026-09-01T09:59:00Z' }],
+      stuck: { is_stuck: false, idle_ms: 1000, last_activity_at: '2026-09-01T09:59:00Z', threshold_ms: 600000 },
+    },
+    conversation: [{ id: 'm-1', body: 'I will compare two approaches', display_name: 'Agent A', occurred_at: '2026-09-01T09:58:00Z' }],
+  }));
+  const out = await bridge.collaboration('task-42');
+  assert.match(out, /team: lead=agent-a, worker=agent-b/);
+  assert.match(out, /drafted options/);
+  assert.match(out, /Agent A: I will compare two approaches/);
+  assert.match(out, /agents should post progress here/);
 });
 
 test('TaskBridge.listArtifactsFor queries durable artifacts by task ownership', async () => {
