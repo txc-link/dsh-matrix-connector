@@ -15,6 +15,15 @@ export interface SecurityDomainDeployment extends SecurityDomainConfig {
   readonly userId: string;
 }
 
+export interface SecurityDomainActivationPlan {
+  readonly company: SecurityDomainDeployment;
+  readonly life: SecurityDomainDeployment;
+  readonly health: SecurityDomainDeployment;
+  readonly companion: SecurityDomainDeployment;
+  /** Evidence from handshake and fault tests; activation is refused without both. */
+  readonly verified: { handshake: boolean; faultRecovery: boolean };
+}
+
 export type ProjectionDecision =
   | { readonly allowed: true }
   | { readonly allowed: false; readonly reason: 'source_domain_mismatch' | 'room_outside_boundary' | 'root_space_has_parent' };
@@ -87,6 +96,17 @@ export class SecurityDomainBoundary {
       domains.add(item.domainRef);
       roots.add(item.rootSpaceId);
       identities.set(item.userId, item.domainRef);
+    }
+  }
+
+  public static validateActivationPlan(plan: SecurityDomainActivationPlan): void {
+    if (!plan.verified.handshake || !plan.verified.faultRecovery) {
+      throw new Error('security domains require verified handshake and fault recovery before activation');
+    }
+    const deployments = [plan.company, plan.life, plan.health, plan.companion];
+    SecurityDomainBoundary.validateDeployment(deployments);
+    for (const item of deployments) {
+      if (item.parentSpaceId) throw new Error(`security domain ${item.domainRef} root must not be nested`);
     }
   }
 }

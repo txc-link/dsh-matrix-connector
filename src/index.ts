@@ -1052,7 +1052,7 @@ export {
   ExecutiveAssistantBridge,
 } from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
-export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundaryKind } from './security-domain.js';
+export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundaryKind, type SecurityDomainActivationPlan, type SecurityDomainDeployment } from './security-domain.js';
 export { WindowsSapiSpeechAdapter, readWavDurationMs, type SpeechSynthesizer, type SynthesizedSpeech } from './speech-synthesis.js';
 export { FishSpeechSpeechAdapter, type FishSpeechSpeechOptions } from './speech-synthesis-http.js';
 export { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
