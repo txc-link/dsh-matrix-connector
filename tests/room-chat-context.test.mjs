@@ -75,7 +75,7 @@ test('handleNaturalChat: idempotencyKey uses event id while preserving thread ke
   });
   assert.equal(outcome.status, 'replied');
   assert.equal(seen.length, 1);
-  assert.equal(seen[0].idempotencyKey, 'matrix-event-$plain-new');
+  assert.equal(seen[0].idempotencyKey, 'matrix-event-$evt-1');
   // threadKey must be passed through to the dispatch input
   assert.equal(seen[0].threadKey, buildThreadKey('!room:hs'));
 });
@@ -264,7 +264,7 @@ test('top-level timeline: unbound room DOES invoke natural-chat with threadKey',
 
   assert.equal(seen.length, 1);
   assert.equal(seen[0].threadKey, buildThreadKey('!new:hs'));
-  assert.equal(seen[0].idempotencyKey, 'matrix-event-$evt-1');
+  assert.equal(seen[0].idempotencyKey, 'matrix-event-$plain-new');
   ctx.cleanup();
 });
 
