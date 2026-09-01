@@ -163,11 +163,13 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
   const prompt = collaboration || persona
     ? [collaboration, persona, `用户消息：${body}`].filter((part) => part && part.length > 0).join('\n\n')
     : body;
-  // Room-level idempotencyKey — derived solely from the opaque threadKey.
-  // EventId is intentionally excluded: each new Matrix eventId would force
-  // the local DSH facade to open a brand new session, breaking continuity.
   const threadKey = buildThreadKey(event.roomId);
-  const idempotencyKey = `matrix-${threadKey}`;
+  // Idempotency is per inbound event; threadKey separately preserves the
+  // conversational session. Reusing a room-level key would replay the first
+  // completed dispatch for every later message.
+  const idempotencyKey = event.eventId
+    ? `matrix-event-${event.eventId}`
+    : `matrix-${threadKey}-${stableBodyKey(body)}`;
 
   try {
     const result = await dispatch({
@@ -204,4 +206,10 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
     await delivery.matrix.sendText(event.roomId, `🤖 agent 响应失败：${message}`).catch(() => {});
     return { status: 'error', message };
   }
+}
+
+function stableBodyKey(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  return (hash >>> 0).toString(16);
 }

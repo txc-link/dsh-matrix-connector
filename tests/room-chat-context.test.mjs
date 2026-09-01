@@ -56,7 +56,7 @@ test('DshDispatchClient forwards threadKey in the dispatch body', async () => {
   assert.equal(calls[0].body.idempotencyKey, 'matrix-mx_abc');
 });
 
-test('handleNaturalChat: idempotencyKey is room-level, independent of eventId', async () => {
+test('handleNaturalChat: idempotencyKey uses event id while preserving thread key', async () => {
   const seen = [];
   const outcome = await handleNaturalChat({
     config: {
@@ -75,12 +75,12 @@ test('handleNaturalChat: idempotencyKey is room-level, independent of eventId', 
   });
   assert.equal(outcome.status, 'replied');
   assert.equal(seen.length, 1);
-  assert.equal(seen[0].idempotencyKey, `matrix-${buildThreadKey('!room:hs')}`);
+  assert.equal(seen[0].idempotencyKey, 'matrix-event-$plain-new');
   // threadKey must be passed through to the dispatch input
   assert.equal(seen[0].threadKey, buildThreadKey('!room:hs'));
 });
 
-test('handleNaturalChat: two events in the same room share idempotencyKey', async () => {
+test('handleNaturalChat: two events in the same room have distinct idempotencyKey', async () => {
   const seen = [];
   const dispatch = async (input) => { seen.push(input); return { answer: 'ok', dispatchId: 'd' }; };
   const delivery = { matrix: { sendText: async () => {} }, logger: () => {} };
@@ -105,8 +105,7 @@ test('handleNaturalChat: two events in the same room share idempotencyKey', asyn
     buildThreadKey,
   });
   assert.equal(seen.length, 2);
-  assert.equal(seen[0].idempotencyKey, seen[1].idempotencyKey,
-    'same roomId MUST yield identical idempotencyKey across events');
+  assert.notEqual(seen[0].idempotencyKey, seen[1].idempotencyKey);
   // sanity: bodies did change, proving we did dispatch twice
   assert.match(seen[0].prompt, /msg 1/);
   assert.match(seen[1].prompt, /msg 2/);
@@ -265,11 +264,11 @@ test('top-level timeline: unbound room DOES invoke natural-chat with threadKey',
 
   assert.equal(seen.length, 1);
   assert.equal(seen[0].threadKey, buildThreadKey('!new:hs'));
-  assert.equal(seen[0].idempotencyKey, `matrix-${buildThreadKey('!new:hs')}`);
+  assert.equal(seen[0].idempotencyKey, 'matrix-event-$evt-1');
   ctx.cleanup();
 });
 
-test('top-level timeline: same unbound room → two events → identical idempotencyKey', async () => {
+test('top-level timeline: same unbound room → two events → distinct idempotencyKey', async () => {
   const seen = [];
   const dispatcher = async (input) => { seen.push(input); return { answer: 'ok', dispatchId: 'd' }; };
   const registry = new ThreadRegistry();
@@ -285,6 +284,6 @@ test('top-level timeline: same unbound room → two events → identical idempot
   await tick();
 
   assert.equal(seen.length, 2);
-  assert.equal(seen[0].idempotencyKey, seen[1].idempotencyKey);
+  assert.notEqual(seen[0].idempotencyKey, seen[1].idempotencyKey);
   ctx.cleanup();
 });

@@ -132,7 +132,7 @@ test('handleNaturalChat: persona is prepended and reply is sent', async () => {
   assert.equal(seen.length, 1);
   assert.match(seen[0].prompt, /你是小栀/);
   assert.match(seen[0].prompt, /今天想你了/);
-  assert.equal(seen[0].idempotencyKey, `matrix-${buildThreadKey('!gf:hs')}`);
+  assert.equal(seen[0].idempotencyKey, 'matrix-event-$e1');
   assert.deepEqual(sent, [{ roomId: '!gf:hs', body: '我也想你' }]);
   assert.equal(voiceDeliveries.length, 1);
   assert.equal(voiceDeliveries[0].roomId, '!gf:hs');
