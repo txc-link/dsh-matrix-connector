@@ -13,6 +13,7 @@ export interface SecurityDomainConfig {
 export interface SecurityDomainDeployment extends SecurityDomainConfig {
   readonly connectorId: string;
   readonly userId: string;
+  readonly e2ee?: 'disabled';
 }
 
 export interface SecurityDomainActivationPlan {
@@ -21,7 +22,7 @@ export interface SecurityDomainActivationPlan {
   readonly health: SecurityDomainDeployment;
   readonly companion: SecurityDomainDeployment;
   /** Evidence from handshake and fault tests; activation is refused without both. */
-  readonly verified: { handshake: boolean; faultRecovery: boolean };
+  readonly verified: { handshakeReceipt: string; faultRecoveryReceipt: string };
 }
 
 export type ProjectionDecision =
@@ -100,13 +101,15 @@ export class SecurityDomainBoundary {
   }
 
   public static validateActivationPlan(plan: SecurityDomainActivationPlan): void {
-    if (!plan.verified.handshake || !plan.verified.faultRecovery) {
-      throw new Error('security domains require verified handshake and fault recovery before activation');
+    if (!plan.verified.handshakeReceipt?.trim() || !plan.verified.faultRecoveryReceipt?.trim()) {
+      throw new Error('security domains require verifiable handshake and fault recovery receipts before activation');
     }
     const deployments = [plan.company, plan.life, plan.health, plan.companion];
     SecurityDomainBoundary.validateDeployment(deployments);
     for (const item of deployments) {
       if (item.parentSpaceId) throw new Error(`security domain ${item.domainRef} root must not be nested`);
+      if (item.e2ee !== 'disabled') throw new Error(`security domain ${item.domainRef} must explicitly disable E2EE`);
+      if (!item.connectorId.trim()) throw new Error(`security domain ${item.domainRef} requires a connector identity`);
     }
   }
 }
