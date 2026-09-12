@@ -51,6 +51,12 @@ export interface DshDispatchInput {
    * it inside DshDispatchClient.
    */
   readonly threadKey?: string;
+  /**
+   * Per-message identity (Matrix eventId). The facade uses it to derive a
+   * per-message Agora dispatch key while `idempotencyKey` stays room-scoped,
+   * so a retried event replays its own dispatch instead of the room's first.
+   */
+  readonly eventId?: string;
 }
 
 export interface DshDispatchResult {
@@ -85,6 +91,7 @@ export class DshDispatchClient {
         idempotencyKey: input.idempotencyKey,
         waitTimeoutMs: input.waitTimeoutMs,
         ...(input.threadKey ? { threadKey: input.threadKey } : {}),
+        ...(input.eventId ? { eventId: input.eventId } : {}),
       }),
       signal: AbortSignal.timeout(Math.max(15_000, this.timeoutMs)),
     });
@@ -94,6 +101,7 @@ export class DshDispatchClient {
       value?: {
         id?: string;
         state?: string;
+        status?: string;
         answer?: string;
         result_envelope?: { answer?: string } | null;
         latest_progress?: { message?: string } | null;
@@ -104,12 +112,17 @@ export class DshDispatchClient {
     }
     const value = body.value;
     if (!value) throw new Error('DSH dispatch returned no value');
-    const answer = value.result_envelope?.answer
-      ?? value.answer
-      ?? value.latest_progress?.message
-      ?? '';
-    if (answer.trim().length > 0) {
-      return { answer: answer.trim(), dispatchId: value.id ?? 'unknown' };
+    const answer = value.result_envelope?.answer ?? value.answer ?? '';
+    const state = value.state ?? value.status;
+    // A terminally failed dispatch has no answer. Falling back to
+    // latest_progress here would surface an internal lifecycle line
+    // ("Dispatch claimed by runtime node") as if it were the agent's reply.
+    if (answer.trim().length === 0 && (state === 'failed' || state === 'cancelled')) {
+      throw new Error(`agent dispatch ${value.id ?? 'unknown'} ended (${state}) without an answer`);
+    }
+    const text = answer.trim().length > 0 ? answer.trim() : (value.latest_progress?.message ?? '');
+    if (text.length > 0) {
+      return { answer: text, dispatchId: value.id ?? 'unknown' };
     }
     throw new Error(`agent dispatch ${value.id ?? 'unknown'} ended (${value.state ?? 'unknown'}) without an answer`);
   }
@@ -158,8 +171,9 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
   const persona = config.personas?.[event.roomId]?.trim();
   const prompt = persona && persona.length > 0 ? `${persona}\n\n用户消息：${body}` : body;
   // Room-level idempotencyKey — derived solely from the opaque threadKey.
-  // EventId is intentionally excluded: each new Matrix eventId would force
-  // the local DSH facade to open a brand new session, breaking continuity.
+  // The per-message identity travels separately as `eventId`; the local DSH
+  // facade turns it into a per-message Agora dispatch key and keeps the room's
+  // DSH session, so continuity no longer depends on dispatch replay.
   const threadKey = buildThreadKey(event.roomId);
   const idempotencyKey = `matrix-${threadKey}`;
 
@@ -170,6 +184,7 @@ export async function handleNaturalChat(options: HandleNaturalChatOptions): Prom
       idempotencyKey,
       waitTimeoutMs: config.waitTimeoutMs,
       threadKey,
+      ...(event.eventId ? { eventId: event.eventId } : {}),
     });
     const text = result.answer.trim();
     if (text.length === 0) throw new Error('agent returned an empty reply');
