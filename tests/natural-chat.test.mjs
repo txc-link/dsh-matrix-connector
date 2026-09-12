@@ -56,6 +56,27 @@ test('DshDispatchClient falls back to latest_progress message', async () => {
   assert.equal(result.answer, '处理中');
 });
 
+test('a failed dispatch never surfaces its lifecycle progress as the answer', async () => {
+  // Regression: a replayed failed dispatch carries latest_progress =
+  // "Dispatch claimed by runtime node". Falling back to it made the room echo
+  // that internal status line as if the agent had replied.
+  const client = new DshDispatchClient({
+    baseUrl: 'http://127.0.0.1:3080',
+    fetchImpl: fetchStub(200, {
+      ok: true,
+      value: {
+        id: 'd-4',
+        status: 'failed',
+        latest_progress: { message: 'Dispatch claimed by runtime node' },
+      },
+    }),
+  });
+  await assert.rejects(
+    () => client.dispatch({ runtimeTargetRef: 'r', prompt: 'p', idempotencyKey: 'k', waitTimeoutMs: 1000 }),
+    /ended \(failed\) without an answer/,
+  );
+});
+
 test('DshDispatchClient surfaces HTTP errors and missing answers', async () => {
   const client = new DshDispatchClient({
     baseUrl: 'http://127.0.0.1:3080',
