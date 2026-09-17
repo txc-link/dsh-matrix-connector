@@ -20,7 +20,9 @@ export interface RuntimeTeamMember {
 
 interface RuntimeLocation {
   nodeId: string;
+  machineLabel?: string;
   agentRef: string;
+  identityRef?: string;
   displayName: string;
   roles: string[];
   model?: string;
@@ -29,6 +31,7 @@ interface RuntimeLocation {
   targetRef?: string;
   runtimeFlavor?: string;
   enabled?: boolean;
+  access?: string;
   lastSeenAt?: string;
 }
 
@@ -56,28 +59,58 @@ function targetParts(targetRef: string): { nodeId?: string; agentRef?: string } 
     : {};
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function safeAccessLabel(node: RuntimeNodeRecord): string | undefined {
+  const machine = record(record(node.metadata)?.machine);
+  const access = record(machine?.access);
+  if (!access) return undefined;
+  const protocol = text(access.protocol ?? access.kind, 'access');
+  const host = text(access.host, 'unknown-host');
+  const port = typeof access.port === 'number' || typeof access.port === 'string' ? `:${access.port}` : '';
+  const user = text(access.user, '');
+  const reachability = text(access.reachability ?? access.visibility, '');
+  const login = user ? `${user}@` : '';
+  return `${protocol}://${login}${host}${port}${reachability ? ` (${reachability})` : ''}`;
+}
+
 function buildLocations(nodes: RuntimeNodeRecord[], targets: RuntimeTargetRecord[]): RuntimeLocation[] {
   const targetByRef = new Map(targets.map((target) => [target.runtime_target_ref, target]));
   const locations: RuntimeLocation[] = [];
 
   for (const node of nodes) {
+    const nodeMetadata = record(node.metadata);
+    const machine = record(nodeMetadata?.machine);
+    const machineLabel = typeof machine?.label === 'string' ? machine.label : undefined;
+    const access = safeAccessLabel(node);
     for (const agent of node.agents ?? []) {
       const ref = text(agent.agent_ref, 'default');
+      const agentMetadata = record(agent.metadata);
+      const identityRef = typeof agentMetadata?.identity_ref === 'string'
+        ? agentMetadata.identity_ref
+        : undefined;
       const targetRef = `dsh:${node.node_id}:${ref}`;
       const target = targetByRef.get(targetRef);
       locations.push({
         nodeId: node.node_id,
+        ...(machineLabel ? { machineLabel } : {}),
         agentRef: ref,
+        ...(identityRef ? { identityRef } : {}),
         displayName: text(agent.display_name, ref),
         roles: Array.isArray(agent.roles) ? agent.roles.filter((role) => typeof role === 'string') : [],
         ...(agent.model ? { model: agent.model } : {}),
-        harness: harnessLabel(target?.host_framework ?? node.host_framework ?? node.runtime_provider),
+        harness: text(agentMetadata?.harness_label, harnessLabel(target?.host_framework ?? node.host_framework ?? node.runtime_provider)),
         presence: text(node.presence, 'unknown'),
         ...(target ? {
           targetRef: target.runtime_target_ref,
           ...(target.runtime_flavor ? { runtimeFlavor: target.runtime_flavor } : {}),
           enabled: target.enabled,
         } : {}),
+        ...(access ? { access } : {}),
         ...(node.last_seen_at ? { lastSeenAt: node.last_seen_at } : {}),
       });
     }
@@ -92,6 +125,7 @@ function buildLocations(nodes: RuntimeNodeRecord[], targets: RuntimeTargetRecord
     locations.push({
       nodeId: parts.nodeId,
       agentRef: parts.agentRef,
+      ...(target.presentation_identity_ref ? { identityRef: target.presentation_identity_ref } : {}),
       displayName: text(target.display_name, parts.agentRef),
       roles: [],
       ...(target.primary_model ? { model: target.primary_model } : {}),
@@ -117,12 +151,15 @@ function matchesAgent(location: RuntimeLocation, agentId: string): boolean {
 
 function renderLocation(location: RuntimeLocation, role?: string, prefix = '-'): string {
   const roleLabel = role ? `${role} → ` : '';
+  const identity = location.identityRef ? ` · identity=${location.identityRef}` : '';
+  const machine = location.machineLabel ? `${location.nodeId} (${location.machineLabel})` : location.nodeId;
   const model = location.model ? ` · model=${location.model}` : '';
   const flavor = location.runtimeFlavor ? ` · flavor=${location.runtimeFlavor}` : '';
   const roles = location.roles.length > 0 ? ` · roles=${location.roles.join(',')}` : '';
   const target = location.targetRef ? ` · target=${location.targetRef}` : '';
   const enabled = location.enabled === false ? ' · disabled' : '';
-  return `${prefix} ${roleLabel}${location.displayName} (agent=${location.agentRef}) · machine=${location.nodeId} · harness=${location.harness} · presence=${location.presence}${model}${flavor}${roles}${target}${enabled}`;
+  const access = location.access ? ` · access=${location.access}` : '';
+  return `${prefix} ${roleLabel}${location.displayName} (agent=${location.agentRef}${identity}) · machine=${machine} · harness=${location.harness} · presence=${location.presence}${model}${flavor}${roles}${target}${access}${enabled}`;
 }
 
 export function renderRuntimeRoster(nodes: RuntimeNodeRecord[], targets: RuntimeTargetRecord[] = []): string {

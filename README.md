@@ -111,7 +111,9 @@ All v0.1 verbs are wired through:
 
 `/agora roster` is a read-only projection from Agora's runtime registry. It
 shows each registered agent's `agent_ref`, node/machine, host Harness, model,
-declared roles, target ref, and current presence. `/agora task collab <id>`
+declared roles, target ref, current presence, and (when configured) the safe
+`identity_ref`, machine label, and SSH locator. Passwords, private keys, and
+tokens are never rendered. `/agora task collab <id>`
 uses the same registry to expand the task team, while assignment and
 authorization remain owned by Agora Core.
 

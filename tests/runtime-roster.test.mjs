@@ -14,8 +14,15 @@ const nodes = [{
     model: 'deepseek-chat',
     roles: ['general', 'reviewer'],
     capabilities: ['research'],
+    metadata: { identity_ref: 'gpu-home-pi', harness_label: 'Pi' },
   }],
   bots: [],
+  metadata: {
+    machine: {
+      label: 'Home GPU',
+      access: { protocol: 'ssh', host: '198.51.100.10', port: 16000, user: 'root', reachability: 'public-tunnel' },
+    },
+  },
   last_seen_at: '2026-09-17T05:00:00Z',
 }];
 
@@ -34,17 +41,21 @@ const targets = [{
 test('runtime roster renders machine, harness, presence and roles', () => {
   const output = renderRuntimeRoster(nodes, targets);
   assert.match(output, /node-home-linux/);
-  assert.match(output, /DeepSeek Harness/);
+  assert.match(output, /harness=Pi/);
   assert.match(output, /presence=online/);
   assert.match(output, /roles=general,reviewer/);
   assert.match(output, /dsh:node-home-linux:default/);
+  assert.match(output, /identity=gpu-home-pi/);
+  assert.match(output, /machine=node-home-linux \(Home GPU\)/);
+  assert.match(output, /harness=Pi/);
+  assert.match(output, /access=ssh:\/\/root@198\.51\.100\.10:16000/);
 });
 
 test('runtime team maps a task role onto the runtime inventory', () => {
   const output = renderRuntimeTeam([{ role: 'executor', agentId: 'default' }], nodes, targets).join('\n');
   assert.match(output, /executor/);
   assert.match(output, /machine=node-home-linux/);
-  assert.match(output, /harness=DeepSeek Harness/);
+  assert.match(output, /harness=Pi/);
 });
 
 test('runtime team keeps unresolved assignments explicit', () => {
