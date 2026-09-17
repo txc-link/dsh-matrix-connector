@@ -44,6 +44,7 @@ import { WindowsSapiSpeechAdapter, type SpeechSynthesizer } from './speech-synth
 import { FishSpeechSpeechAdapter } from './speech-synthesis-http.js';
 import { GovernedVoiceDelivery, type GovernedVoiceRequest } from './governed-voice.js';
 import { isMatrixSenderAllowed } from './sender-authorization.js';
+import { RuntimeRosterBridge } from './runtime-roster.js';
 import {
   DshDispatchClient,
   handleNaturalChat,
@@ -202,6 +203,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
     defaultCreator: config.userId,
   });
   const taskBridge = new TaskBridge(agora);
+  const runtimeRosterBridge = new RuntimeRosterBridge(agora);
   const artifactBridge = new ArtifactBridge(agora);
   const attentionBridge = new AttentionBridge(agora);
   const companyBridge = new CompanyBridge(agora, {
@@ -389,7 +391,7 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         }
         const taskId = decision.args[0]!;
         if (sub === 'collab' || sub === 'timeline' || sub === 'context') {
-          const snapshot = await taskBridge.collaboration(taskId);
+          const snapshot = await taskBridge.collaboration(taskId, runtimeRosterBridge);
           await matrix.sendText(input.roomId, snapshot);
           return;
         }
@@ -445,6 +447,11 @@ export function createMatrixConnectorPlugin(opts: PluginOptions): CordisPlugin {
         } else {
           reply = await executiveAssistantBridge.reconcile(decision.args);
         }
+        await matrix.sendText(input.roomId, reply);
+        return;
+      }
+      case 'roster': {
+        const reply = await runtimeRosterBridge.show();
         await matrix.sendText(input.roomId, reply);
         return;
       }
@@ -1033,6 +1040,12 @@ export {
   ExecutiveAssistantBridge,
 } from './bridges.js';
 export { type MatrixConnectorConfig, buildConfig } from './config.js';
+export {
+  RuntimeRosterBridge,
+  renderRuntimeRoster,
+  renderRuntimeTeam,
+  type RuntimeTeamMember,
+} from './runtime-roster.js';
 export { SecurityDomainBoundary, type SecurityDomainConfig, type SecurityBoundaryKind } from './security-domain.js';
 export { WindowsSapiSpeechAdapter, readWavDurationMs, type SpeechSynthesizer, type SynthesizedSpeech } from './speech-synthesis.js';
 export { FishSpeechSpeechAdapter, type FishSpeechSpeechOptions } from './speech-synthesis-http.js';

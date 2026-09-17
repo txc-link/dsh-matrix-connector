@@ -31,6 +31,7 @@ import {
 import type { ProjectId } from './config.js';
 import { parseDispatchArgs } from './dispatch-args.js';
 import { resolveFromRoster } from './room-roster.js';
+import type { RuntimeRosterBridge, RuntimeTeamMember } from './runtime-roster.js';
 
 export class CitizenBridge {
   constructor(private readonly agora: AgoraRestClient) {}
@@ -161,7 +162,7 @@ export class TaskBridge {
    * humans and agents can join the same room without guessing which worker is
    * active or asking the connector to own task state.
    */
-  async collaboration(taskId: string): Promise<string> {
+  async collaboration(taskId: string, runtimeRoster?: RuntimeRosterBridge): Promise<string> {
     const detail = await this.agora.getTask(taskId);
     const [timelineResult, conversationResult] = await Promise.allSettled([
       this.agora.getTaskTimeline(taskId),
@@ -172,9 +173,19 @@ export class TaskBridge {
       `state=${detail.state}${detail.current_stage ? `  stage=${detail.current_stage}` : ''}  type=${detail.type ?? '—'}`,
       `creator=${detail.creator ?? '—'}`,
     ];
-    const team = (detail.team as { members?: Array<{ role?: string; agentId?: string; agent_id?: string }> } | undefined)?.members ?? [];
+    const team = (detail.team as { members?: RuntimeTeamMember[] } | undefined)?.members ?? [];
     if (team.length > 0) {
-      lines.push(`team: ${team.map((member) => `${member.role ?? 'member'}=${member.agentId ?? member.agent_id ?? '—'}`).join(', ')}`);
+      if (runtimeRoster) {
+        const mapped = await runtimeRoster.describeTeam(team);
+        if (mapped) {
+          lines.push('team (runtime):');
+          lines.push(...mapped);
+        } else {
+          lines.push(`team: ${team.map((member) => `${member.role ?? 'member'}=${member.agentId ?? member.agent_id ?? '—'}`).join(', ')}`);
+        }
+      } else {
+        lines.push(`team: ${team.map((member) => `${member.role ?? 'member'}=${member.agentId ?? member.agent_id ?? '—'}`).join(', ')}`);
+      }
     }
     if (timelineResult.status === 'fulfilled') {
       const timeline = timelineResult.value;

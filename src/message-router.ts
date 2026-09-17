@@ -13,6 +13,7 @@ export type VerbName =
   | 'brain'
   | 'company'
   | 'assistant'
+  | 'roster'
   | 'im'
   | 'rollup'
   | 'stuck'
@@ -152,6 +153,12 @@ export function route(rawMessage: string, opts: RouterOptions = {}): VerbDecisio
       }
       return { verb: 'assistant', args: tail, errorCode: 'INVALID_SYNTAX' };
     }
+    case 'roster':
+    case 'agents': {
+      // Read-only runtime inventory.  `agents` is kept as a discoverable
+      // alias because users naturally ask "which agents are in this room?".
+      return { verb: 'roster', args: tail };
+    }
     case 'im': {
       if (tail.length === 0) {
         return { verb: 'im', args: [], subVerb: 'help' };
@@ -254,6 +261,8 @@ export const HELP_TEXT = [
   '  /agora company [show [organization] | list]',
   '  /agora assistant ask [--org <id>] [--capability <skill>] <request>',
   '  /agora assistant inbox | commitments | show <request_id> | reconcile <request_id>',
+  '  /agora roster                         (machines, roles, harnesses, presence)',
+  '  /agora agents                         (alias for roster)',
   '  /agora im health | help',
   '  /agora say <text>                    (proactive voice; needs speech config)',
   '  /agora calendar today|conflicts|morning|evening [--domain work|life]',

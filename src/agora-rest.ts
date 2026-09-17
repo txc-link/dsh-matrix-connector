@@ -201,6 +201,59 @@ export interface RelationshipInitiativeDeliveryRecord {
   lease_token: string;
 }
 
+/**
+ * Runtime inventory returned by Agora's node registry.  These records are
+ * intentionally read-only projections: Matrix can show where an agent runs,
+ * but it must not become the source of truth for runtime assignment.
+ */
+export interface RuntimeNodeAgentRecord {
+  agent_ref: string;
+  display_name?: string | null;
+  preset?: string | null;
+  model?: string | null;
+  workspace_alias?: string | null;
+  roles: string[];
+  capabilities: string[];
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface RuntimeNodeBotRecord {
+  provider: string;
+  bot_ref: string;
+  platform_id?: string | null;
+  display_name?: string | null;
+  agent_ref?: string | null;
+  connected: boolean;
+  capabilities: string[];
+}
+
+export interface RuntimeNodeRecord {
+  node_id: string;
+  presence: 'online' | 'stale' | string;
+  host_framework?: string | null;
+  runtime_provider?: string | null;
+  agents: RuntimeNodeAgentRecord[];
+  bots: RuntimeNodeBotRecord[];
+  capacity?: { max_concurrent?: number; active?: number } | null;
+  metadata?: Record<string, unknown> | null;
+  last_seen_at?: string | null;
+  expires_at?: string | null;
+}
+
+export interface RuntimeTargetRecord {
+  runtime_target_ref: string;
+  runtime_provider?: string | null;
+  runtime_flavor?: string | null;
+  host_framework?: string | null;
+  primary_model?: string | null;
+  channel_providers?: string[];
+  enabled: boolean;
+  display_name?: string | null;
+  presentation_mode?: string | null;
+  presentation_provider?: string | null;
+  presentation_identity_ref?: string | null;
+}
+
 export interface OrganizationRecord {
   id: string;
   slug: string;
@@ -383,6 +436,18 @@ export class AgoraRestClient {
 
   async health(): Promise<HealthResponse> {
     return this.request<HealthResponse>('GET', '/api/health');
+  }
+
+  /** Read-only runtime inventory used by the Matrix roster projection. */
+  async listRuntimeNodes(): Promise<RuntimeNodeRecord[]> {
+    const response = await this.request<{ nodes: RuntimeNodeRecord[] }>('GET', '/api/runtime-nodes');
+    return response.nodes;
+  }
+
+  /** Read-only target inventory used to show harness/model metadata. */
+  async listRuntimeTargets(): Promise<RuntimeTargetRecord[]> {
+    const response = await this.request<{ runtime_targets: RuntimeTargetRecord[] }>('GET', '/api/runtime-targets');
+    return response.runtime_targets;
   }
 
   async listOrganizations(): Promise<OrganizationRecord[]> {

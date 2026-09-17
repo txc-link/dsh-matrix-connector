@@ -30,6 +30,20 @@ function okJson(body, status = 200) {
   };
 }
 
+test('agora-rest: runtime inventory reads nodes and targets', async () => {
+  const captured = [];
+  const fetchImpl = makeFetch(captured, (init) => init.method === 'GET' && captured.length === 1
+    ? okJson({ nodes: [{ node_id: 'node-a', presence: 'online', agents: [], bots: [] }] })
+    : okJson({ runtime_targets: [{ runtime_target_ref: 'dsh:node-a:default', enabled: true }] }));
+  const client = new AgoraRestClient({ baseUrl: 'http://127.0.0.1:18008', apiToken: 'tok', fetchImpl });
+  const nodes = await client.listRuntimeNodes();
+  const targets = await client.listRuntimeTargets();
+  assert.equal(nodes[0].node_id, 'node-a');
+  assert.equal(targets[0].runtime_target_ref, 'dsh:node-a:default');
+  assert.match(captured[0].url, /\/api\/runtime-nodes$/);
+  assert.match(captured[1].url, /\/api\/runtime-targets$/);
+});
+
 const sampleCitizen = {
   citizen_id: 'cit-a',
   project_id: 'node-a',

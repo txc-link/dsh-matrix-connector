@@ -99,6 +99,7 @@ All v0.1 verbs are wired through:
 | `/agora artifact <id>` | `GET /api/artifacts/:id/content` | uploads bytes to matrix |
 | `/agora brain search <query>` | `POST /api/projects/:id/context/retrieve` | hybrid brain lookup |
 | `/agora citizen list` | `GET /api/citizens?project_id=<id>` | rendered with role + status |
+| `/agora roster` / `/agora agents` | `GET /api/runtime-nodes` + `GET /api/runtime-targets` | role/agent → machine → Harness → presence |
 | `/agora citizen show <id>` | `GET /api/citizens/:id` | persona + boundaries + skills |
 | `/agora company [show [org] \| list]` | `GET /api/organizations` | durable organization, reporting, and employment view |
 | `/agora assistant ask [options] <request>` | `POST /api/organizations/:id/assistant/requests` | creates a Core request, assigned task, and commitment |
@@ -107,6 +108,12 @@ All v0.1 verbs are wired through:
 | `/agora assistant show/reconcile <request_id>` | assistant request routes | inspect or reconcile task outcome |
 | `/agora im health` / `help` | `GET /api/health` | static text |
 | placeholder auto-edit | `GET /api/events?since=…` (polled) | updates the placeholder message in-place |
+
+`/agora roster` is a read-only projection from Agora's runtime registry. It
+shows each registered agent's `agent_ref`, node/machine, host Harness, model,
+declared roles, target ref, and current presence. `/agora task collab <id>`
+uses the same registry to expand the task team, while assignment and
+authorization remain owned by Agora Core.
 
 ## v0.3.0 Verification
 

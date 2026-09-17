@@ -206,6 +206,15 @@ test('route: /agora company list and show are structured', () => {
   assert.deepEqual(show.args, ['acme']);
 });
 
+test('route: /agora roster and /agora agents expose the read-only runtime inventory', () => {
+  const roster = route('/agora roster');
+  assert.equal(roster.verb, 'roster');
+  assert.deepEqual(roster.args, []);
+  const alias = route('/agora agents');
+  assert.equal(alias.verb, 'roster');
+  assert.deepEqual(alias.args, []);
+});
+
 test('route: /agora assistant ask preserves adapter options and prompt', () => {
   const d = route('/agora assistant ask --capability research 调研新材料');
   assert.equal(d.verb, 'assistant');
@@ -246,7 +255,7 @@ test('renderError: INVALID_SYNTAX mentions /agora help', () => {
 });
 
 test('HELP_TEXT: contains every supported verb', () => {
-  for (const v of ['citizen', 'dispatch', 'task', 'artifact', 'brain', 'company', 'assistant', 'im', 'help']) {
+  for (const v of ['citizen', 'dispatch', 'task', 'artifact', 'brain', 'company', 'assistant', 'roster', 'im', 'help']) {
     assert.match(HELP_TEXT, new RegExp(v));
   }
 });
