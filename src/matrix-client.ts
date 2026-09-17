@@ -1,3 +1,56 @@
+import { marked, Renderer } from 'marked';
+
+const markdownRenderer = new Renderer();
+markdownRenderer.html = ({ text }) => escapeHtml(text);
+markdownRenderer.link = function link({ href, title, tokens }) {
+  const safe = safeHref(href);
+  if (!safe) return this.parser.parseInline(tokens);
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+  return `<a href="${escapeHtml(safe)}"${titleAttr}>${this.parser.parseInline(tokens)}</a>`;
+};
+markdownRenderer.image = ({ text }) => escapeHtml(text);
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function safeHref(value: string): string | null {
+  const href = String(value ?? '').trim();
+  if (/^(?:https?:|mailto:|mxc:)/iu.test(href)) return href;
+  if (/^[#/]/u.test(href)) return href;
+  return null;
+}
+
+/**
+ * Keep short chat replies as Matrix body-only text. Structured/long replies
+ * are documents and receive Matrix HTML so Element can render them.
+ */
+export function isDocumentMarkdown(value: string): boolean {
+  const text = String(value ?? '');
+  if (text.length >= 500) return true;
+  if (text.split(/\r?\n/u).length < 2) return false;
+  return /^(?:#{1,6}\s|\s*[-*+]\s+|\s*\d+[.)]\s+)/mu.test(text)
+    || /```|`[^`]+`|\[[^\]]+\]\([^)]*\)|\|[^\n]+\||\*\*[^*]+\*\*/u.test(text);
+}
+
+export function markdownToHtml(value: string): string {
+  const source = String(value ?? '');
+  try {
+    return marked.parse(source, {
+      renderer: markdownRenderer,
+      gfm: true,
+      breaks: true,
+    }) as string;
+  } catch {
+    return `<p>${escapeHtml(source).replace(/\r?\n/gu, '<br />')}</p>`;
+  }
+}
+
 /**
  * matrix-client — thin wrapper around matrix-js-sdk.
  *
@@ -118,7 +171,7 @@ export class MatrixClient {
   constructor(private readonly transport: MatrixTransport) {}
 
   async sendText(roomId: string, body: string, opts: { html?: string } = {}): Promise<MatrixSendReceipt> {
-    const formattedBody = opts.html;
+    const formattedBody = opts.html ?? (isDocumentMarkdown(body) ? markdownToHtml(body) : undefined);
     return this.transport.sendRoomMessage({
       roomId,
       senderMxid: '',
@@ -130,7 +183,7 @@ export class MatrixClient {
   }
 
   async edit(roomId: string, eventId: string, body: string, opts: { html?: string } = {}): Promise<MatrixEditReceipt> {
-    const formattedBody = opts.html;
+    const formattedBody = opts.html ?? (isDocumentMarkdown(body) ? markdownToHtml(body) : undefined);
     return this.transport.editRoomMessage(roomId, eventId, {
       roomId,
       senderMxid: '',

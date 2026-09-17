@@ -52,6 +52,18 @@ test('matrix-client: sendText without html omits formattedBody and format', asyn
   assert.equal(calls.send[0].format, undefined);
 });
 
+test('matrix-client: structured Markdown auto-renders while preserving body fallback', async () => {
+  const { transport, calls } = makeTransport();
+  const client = new MatrixClient(transport);
+  const body = '# 核验结果\n\n| 项目 | 状态 |\n| --- | --- |\n| SSH | **已验证** |';
+  await client.sendText('!room:hs', body);
+  assert.equal(calls.send[0].body, body);
+  assert.equal(calls.send[0].format, 'org.matrix.custom.html');
+  assert.match(calls.send[0].formattedBody, /<h1>核验结果<\/h1>/u);
+  assert.match(calls.send[0].formattedBody, /<table>/u);
+  assert.match(calls.send[0].formattedBody, /<strong>已验证<\/strong>/u);
+});
+
 test('matrix-client: edit preserves formatting when html provided', async () => {
   const { transport, calls } = makeTransport();
   const client = new MatrixClient(transport);
